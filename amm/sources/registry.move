@@ -1,7 +1,7 @@
 module amm::registry;
 
 use amm::amm::{Self, AMM, AMMAdminCap};
-use amm::constants::{Self};
+use amm::constants;
 use std::type_name::{Self, TypeName};
 use sui::table::{Self, Table};
 use sui::versioned::{Self, Versioned};
@@ -45,7 +45,9 @@ public fun create_amm<P>(self: &mut Registry, ctx: &mut TxContext): (AMMAdminCap
 
     let self: &mut RegistryInner = self.inner.load_value_mut();
 
-    let (owner_cap, amm) = amm::create_amm<P>(ctx);
+    let (admin_cap, amm) = amm::create_amm<P>(ctx);
     table::add(&mut self.markets, type_name::get<P>(), object::id(&amm));
-    (owner_cap, amm)
+    (admin_cap, amm)
 }
+
+// TODO: add test functions
