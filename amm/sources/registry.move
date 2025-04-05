@@ -1,6 +1,7 @@
 module amm::registry;
 
 use amm::constants;
+use amm::utils::compare_string;
 use std::type_name::{Self, TypeName};
 use sui::bag::{Self, Bag};
 use sui::versioned::{Self, Versioned};
@@ -66,7 +67,7 @@ public fun set_treasury_address(
 // === Public-Package Functions ===
 
 /// Register a new pair in the registry.
-/// Asserts if the token inputs are identical or 
+/// Asserts if the token inputs are identical or
 /// the pair already exists.
 public(package) fun register_pair<TokenA, TokenB>(self: &mut Registry, pool_id: ID) {
     assert!(type_name::get<TokenA>() != type_name::get<TokenB>(), EIdenticalTokens);
@@ -95,7 +96,7 @@ public(package) fun register_pair<TokenA, TokenB>(self: &mut Registry, pool_id: 
 }
 
 /// Only admin can call this function
-public(package) fun unregister_pool<TokenA, TokenB>(self: &mut Registry) {
+public(package) fun unregister_pair<TokenA, TokenB>(self: &mut Registry) {
     let self = self.load_inner_mut();
     let tokenA = type_name::get<TokenA>();
     let tokenB = type_name::get<TokenB>();
@@ -119,33 +120,4 @@ public(package) fun unregister_pool<TokenA, TokenB>(self: &mut Registry) {
 // === Private Functions ===
 fun load_inner_mut(self: &mut Registry): &mut RegistryInner {
     self.inner.load_value_mut()
-}
-
-// Helper function to compare two byte vectors lexicographically
-fun compare_string(bytes1: &vector<u8>, bytes2: &vector<u8>): u8 {
-    let len1 = vector::length(bytes1);
-    let len2 = vector::length(bytes2);
-    let mut i = 0;
-
-    // Compare byte by byte up to the length of the shorter vector
-    while (i < len1 && i < len2) {
-        let byte1 = *vector::borrow(bytes1, i);
-        let byte2 = *vector::borrow(bytes2, i);
-
-        if (byte1 < byte2) {
-            return 0
-        };
-        if (byte1 > byte2) {
-            return 2
-        };
-        // Bytes are equal, continue to the next index
-        i = i + 1;
-    };
-    if (len1 < len2) {
-        0
-    } else if (len1 > len2) {
-        1
-    } else {
-        2
-    }
 }
