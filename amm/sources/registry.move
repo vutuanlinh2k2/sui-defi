@@ -30,8 +30,8 @@ public struct RegistryInner has store {
 }
 
 public struct PairKey has copy, drop, store {
-    tokenA: TypeName,
-    tokenB: TypeName,
+    coinA: TypeName,
+    coinB: TypeName,
 }
 
 fun init(_: REGISTRY, ctx: &mut TxContext) {
@@ -69,55 +69,59 @@ public fun set_treasury_address(
 /// Register a new pair in the registry.
 /// Asserts if the token inputs are identical or
 /// the pair already exists.
-public(package) fun register_pair<TokenA, TokenB>(self: &mut Registry, pool_id: ID) {
-    assert!(type_name::get<TokenA>() != type_name::get<TokenB>(), EIdenticalTokens);
+public(package) fun register_pair<CoinA, CoinB>(self: &mut Registry, pool_id: ID) {
+    assert!(type_name::get<CoinA>() != type_name::get<CoinB>(), EIdenticalTokens);
 
     let self = self.load_inner_mut();
 
-    let tokenA = type_name::get<TokenA>();
-    let tokenB = type_name::get<TokenB>();
-
-    let key = if (
-        compare_string(tokenA.borrow_string().as_bytes(), tokenB.borrow_string().as_bytes()) == 0
-    ) {
-        PairKey {
-            tokenA,
-            tokenB,
-        }
-    } else {
-        PairKey {
-            tokenA: tokenB,
-            tokenB: tokenA,
-        }
-    };
+    let key = get_pair_key<CoinA, CoinB>();
     assert!(!self.pairs.contains(key), EPairAlreadyExists);
 
     self.pairs.add(key, pool_id);
 }
 
+/// Unregister token from the registry
 /// Only admin can call this function
-public(package) fun unregister_pair<TokenA, TokenB>(self: &mut Registry) {
+public(package) fun unregister_pair<CoinA, CoinB>(self: &mut Registry) {
     let self = self.load_inner_mut();
-    let tokenA = type_name::get<TokenA>();
-    let tokenB = type_name::get<TokenB>();
-    let key = if (
-        compare_string(tokenA.borrow_string().as_bytes(), tokenB.borrow_string().as_bytes()) == 0
-    ) {
-        PairKey {
-            tokenA,
-            tokenB,
-        }
-    } else {
-        PairKey {
-            tokenA: tokenB,
-            tokenB: tokenA,
-        }
-    };
+    let key = get_pair_key<CoinA, CoinB>();
+
     assert!(self.pairs.contains(key), EPairDoesNotExist);
     self.pairs.remove<PairKey, ID>(key);
 }
 
-// === Private Functions ===
-fun load_inner_mut(self: &mut Registry): &mut RegistryInner {
+public(package) fun get_pool_id<CoinA, CoinB>(self: &Registry): ID {
+    let self = self.load_inner();
+    let key = get_pair_key<CoinA, CoinB>();
+    assert!(self.pairs.contains(key), EPairDoesNotExist);
+
+    *self.pairs.borrow<PairKey, ID>(key)
+}
+
+public(package) fun load_inner(self: &Registry): &RegistryInner {
+    self.inner.load_value()
+}
+
+public(package) fun load_inner_mut(self: &mut Registry): &mut RegistryInner {
     self.inner.load_value_mut()
 }
+
+// === Private Functions ===
+fun get_pair_key<CoinA, CoinB>(): PairKey {
+    let coinA = type_name::get<CoinA>();
+    let coinB = type_name::get<CoinB>();
+    if (compare_string(coinA.borrow_string().as_bytes(), coinB.borrow_string().as_bytes()) == 0) {
+        PairKey {
+            coinA,
+            coinB,
+        }
+    } else {
+        PairKey {
+            coinA: coinB,
+            coinB: coinA,
+        }
+    }
+}
+
+// === Test Functions ===
+// TODO: add test functions

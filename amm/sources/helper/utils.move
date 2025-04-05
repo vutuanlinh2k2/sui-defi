@@ -1,7 +1,7 @@
 module amm::utils;
 
 /// Helper function to compare two byte vectors lexicographically
-/// This is used to sort token order when creating and searching for a pair
+/// This is used to sort coin order when creating and searching for a pair
 /// Since negative number is not supported, 
 /// return 0 (smaller), 1 (equal) and 2 (larger) only
 public (package) fun compare_string(bytes1: &vector<u8>, bytes2: &vector<u8>): u8 {
@@ -31,3 +31,5 @@ public (package) fun compare_string(bytes1: &vector<u8>, bytes2: &vector<u8>): u
         2
     }
 }
+
+// TODO: add test functions
