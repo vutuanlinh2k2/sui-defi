@@ -5,11 +5,6 @@ module amm::pair;
 // === Errors ===
 
 // === Structs ===
-
-// === Public-View Functions ===
-
-// === Public-Mutative Functions ===
-
-// === Public-Package Functions ===
-
-// === Private Functions ===
+public struct Pair<phantom CoinA, phantom CoinB> has key, store {
+    id: UID,
+}
