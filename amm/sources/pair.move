@@ -19,6 +19,8 @@ const EInsufficientAmountOfCoins: u64 = 6;
 const EInsufficientLPTokenMinted: u64 = 7;
 const EInsufficientLPTokenBurned: u64 = 8;
 const EInsufficientWithdrawAmount: u64 = 9;
+const EInsufficientAmountIn: u64 = 10;
+const EInsufficientAmountOut: u64 = 11;
 
 // === Structs ===
 public struct Pair has key {
@@ -141,7 +143,11 @@ public(package) fun add_liquidity_and_mint_lp_token<CoinA, CoinB>(
 
     let balance_lp = balance::increase_supply(&mut self.lp_token_supply, amount_lp_mint);
 
-    update(self,fees_on, clock);
+    update(self, clock);
+
+    if (fees_on) {
+        self.k_last = (balance::value(&self.coin_a_reserve) as u128) * (balance::value(&self.coin_b_reserve) as u128);
+    };
 
     (balance_lp, balance_a, balance_b)
 }
@@ -169,9 +175,35 @@ public(package) fun remove_liquidity_and_burn_lp_token<CoinA, CoinB>(
     let withdraw_balance_a = balance::split(&mut self.coin_a_reserve, withdraw_amount_a);
     let withdraw_balance_b = balance::split(&mut self.coin_b_reserve, withdraw_amount_b);
 
-    update(self, fees_on, clock);
+    update(self, clock);
+
+    if (fees_on) {
+        self.k_last = (balance::value(&self.coin_a_reserve) as u128) * (balance::value(&self.coin_b_reserve) as u128);
+    };
 
     (withdraw_balance_a, withdraw_balance_b)
+}
+
+public(package) fun swap_exact_coins_for_coins<CoinIn, CoinOut>(
+    self: &mut Pair,
+    balance_in: Balance<CoinIn>,
+    min_amount_out: u64,
+    is_coin_in_the_first_in_order: bool
+): Balance<CoinOut> {
+
+    if (is_coin_in_the_first_in_order) {
+        let self = self.load_inner_mut<CoinIn, CoinOut>();
+        let amount_out = calculate_amount_out(balance::value(&balance_in), balance::value(&self.coin_a_reserve), balance::value(&self.coin_b_reserve));
+        assert!(amount_out >= min_amount_out, EInsufficientAmountOut);
+        balance::join(&mut self.coin_a_reserve, balance_in);
+        balance::split(&mut self.coin_b_reserve, amount_out)
+    } else {
+        let self = self.load_inner_mut<CoinOut, CoinIn>();
+        let amount_out = calculate_amount_out(balance::value(&balance_in), balance::value(&self.coin_a_reserve), balance::value(&self.coin_b_reserve));
+        assert!(amount_out >= min_amount_out, EInsufficientAmountOut);
+        balance::join(&mut self.coin_b_reserve, balance_in);
+        balance::split(&mut self.coin_a_reserve, amount_out)
+    }
 }
 
 // Change this function to return a mutable reference
@@ -214,8 +246,8 @@ fun check_fees_on_and_mint<CoinA, CoinB>(
     fees_on
 }
 
-/// Update price cumulative, k_last and price_last_update_timestamp_s
-fun update<CoinA, CoinB>(self: &mut PairInner<CoinA, CoinB>, fees_on: bool, clock: &Clock) {
+/// Update price cumulative, and price_last_update_timestamp_s
+fun update<CoinA, CoinB>(self: &mut PairInner<CoinA, CoinB>, clock: &Clock) {
     let current_time_s = clock::timestamp_ms(clock) / 1000;
     let time_elapsed_s = current_time_s - self.price_last_update_timestamp_s;
 
@@ -229,9 +261,6 @@ fun update<CoinA, CoinB>(self: &mut PairInner<CoinA, CoinB>, fees_on: bool, cloc
             self.price_b_cumulative_last + (amount_reserve_a / amount_reserve_b as u128) * (time_elapsed_s as u128);
     };
 
-    if (fees_on) {
-        self.k_last = (amount_reserve_a as u128) * (amount_reserve_b as u128);
-    };
     self.price_last_update_timestamp_s = current_time_s;
 }
 
@@ -306,12 +335,22 @@ fun calculate_amount_to_withdraw<CoinA, CoinB>(self: &mut Pair, amount_lp: u64):
     (withdraw_amount_a, withdraw_amount_b)
 }
 
+fun calculate_amount_out(amount_in: u64, amount_reserve_in: u64, amount_reserve_out: u64): u64 {
+    assert!(amount_in > 0, EInsufficientAmountIn);
+    assert!(amount_reserve_in > 0 && amount_reserve_out > 0, EInsufficientLiquidity);
+    let amount_in_with_fee = (amount_in as u128) * 997;
+    let numerator = amount_in_with_fee * (amount_reserve_out as u128);
+    let denominator = (amount_reserve_in as u128) * 1000 + amount_in_with_fee;
+    let amount_out = (numerator / denominator as u64);
+    amount_out
+}
+
 /// Given an amount of an asset and pair reserves,
 /// returns an equivalent amount of the other asset.
-fun quote(amount_a: u64, reserve_a: u64, reserve_b: u64): u64 {
+fun quote(amount_a: u64, amount_reserve_a: u64, amount_reserve_b: u64): u64 {
     assert!(amount_a > 0, EInsufficientAmount);
-    assert!(reserve_a > 0 && reserve_b > 0, EInsufficientLiquidity);
-    (((amount_a as u128) * (reserve_b as u128)) / (reserve_a as u128)  as u64)
+    assert!(amount_reserve_a > 0 && amount_reserve_b > 0, EInsufficientLiquidity);
+    (((amount_a as u128) * (amount_reserve_b as u128)) / (amount_reserve_a as u128)  as u64)
 }
 
 fun load_inner<CoinA, CoinB>(self: &Pair): &PairInner<CoinA, CoinB> {

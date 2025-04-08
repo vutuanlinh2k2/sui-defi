@@ -11,7 +11,7 @@ use sui::coin::{Self, Coin};
 const EPairAlreadyExists: u64 = 1;
 const EDeadlinePassed: u64 = 2;
 
-// === Public Functions (Mutative) ===
+// === Public Mutative Functions ===
 
 public fun create_pair_and_mint_lp_token<CoinA, CoinB>(
     registry: &mut Registry,
@@ -95,7 +95,24 @@ public fun remove_liquidity_and_burn_lp_token<CoinA, CoinB>(
     send_coin_if_not_zero(balance_b, ctx.sender(), ctx);
 }
 
-// === Public Functions (View) ===
+public fun swap_exact_coins_for_coins<CoinIn, CoinOut>(
+    pair: &mut Pair,
+    coin_in: Coin<CoinIn>,
+    min_amount_out: u64,
+    deadline_timestamp_ms: u64,
+    clock: &Clock,
+    ctx: &mut TxContext
+) {
+    assert_deadline(deadline_timestamp_ms, clock);
+
+    let is_coin_in_the_first_in_order = assert_identical_and_check_coins_order<CoinIn, CoinOut>();
+    
+    let balance_out = pair::swap_exact_coins_for_coins<CoinIn, CoinOut>(pair, coin::into_balance(coin_in), min_amount_out, is_coin_in_the_first_in_order);
+
+    send_coin_if_not_zero(balance_out, ctx.sender(), ctx);
+}
+
+// === Public View Functions ===
 
 public fun get_pair_id<CoinA, CoinB>(registry: &Registry): ID {
     registry.get_pair_id<CoinA, CoinB>()
