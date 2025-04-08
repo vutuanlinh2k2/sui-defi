@@ -112,6 +112,24 @@ public fun swap_exact_coins_for_coins<CoinIn, CoinOut>(
     send_coin_if_not_zero(balance_out, ctx.sender(), ctx);
 }
 
+public fun swap_coins_for_exact_coins<CoinIn, CoinOut>(
+    pair: &mut Pair,
+    coin_in: Coin<CoinIn>,
+    amount_out: u64,
+    deadline_timestamp_ms: u64,
+    clock: &Clock,
+    ctx: &mut TxContext
+) {
+    assert_deadline(deadline_timestamp_ms, clock);
+
+    let is_coin_in_the_first_in_order = assert_identical_and_check_coins_order<CoinIn, CoinOut>();
+
+    let (balance_remainder, balance_out) = pair::swap_coins_for_exact_coins<CoinIn, CoinOut>(pair, coin::into_balance(coin_in), amount_out, is_coin_in_the_first_in_order);
+
+    send_coin_if_not_zero(balance_remainder, ctx.sender(), ctx);
+    send_coin_if_not_zero(balance_out, ctx.sender(), ctx);
+}
+
 // === Public View Functions ===
 
 public fun get_pair_id<CoinA, CoinB>(registry: &Registry): ID {

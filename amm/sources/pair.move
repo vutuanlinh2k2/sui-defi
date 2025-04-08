@@ -21,6 +21,8 @@ const EInsufficientLPTokenBurned: u64 = 8;
 const EInsufficientWithdrawAmount: u64 = 9;
 const EInsufficientAmountIn: u64 = 10;
 const EInsufficientAmountOut: u64 = 11;
+const EInsufficientOutputAmount: u64 = 12;
+const EInsufficientInputAmount: u64 = 13;
 
 // === Structs ===
 public struct Pair has key {
@@ -206,6 +208,27 @@ public(package) fun swap_exact_coins_for_coins<CoinIn, CoinOut>(
     }
 }
 
+public(package) fun swap_coins_for_exact_coins<CoinIn, CoinOut>(
+    self: &mut Pair,
+    mut balance_in: Balance<CoinIn>, // TODO: don't understand syntax?
+    amount_out: u64,
+    is_coin_in_the_first_in_order: bool
+): (Balance<CoinIn> , Balance<CoinOut>) {
+    if (is_coin_in_the_first_in_order) {
+        let self = self.load_inner_mut<CoinIn, CoinOut>();
+        let amount_in = calculate_amount_in(amount_out, balance::value(&self.coin_a_reserve), balance::value(&self.coin_b_reserve));
+        assert!(amount_in <= balance::value(&balance_in), EInsufficientInputAmount);
+        balance::join(&mut self.coin_a_reserve, balance::split( &mut balance_in, amount_in));
+        (balance_in, balance::split(&mut self.coin_b_reserve, amount_out))
+    } else {
+        let self = self.load_inner_mut<CoinOut, CoinIn>();
+        let amount_in = calculate_amount_in(amount_out, balance::value(&self.coin_a_reserve), balance::value(&self.coin_b_reserve));
+        assert!(amount_in <= balance::value(&balance_in), EInsufficientInputAmount);
+        balance::join(&mut self.coin_b_reserve, balance::split(&mut balance_in, amount_in));
+        (balance_in, balance::split(&mut self.coin_a_reserve, amount_out))
+    }
+}
+
 // Change this function to return a mutable reference
 public(package) fun fees_mut<CoinA, CoinB>(self: &mut Pair): &mut Balance<LPToken<CoinA, CoinB>> {
     let self = self.load_inner_mut<CoinA, CoinB>();
@@ -343,6 +366,15 @@ fun calculate_amount_out(amount_in: u64, amount_reserve_in: u64, amount_reserve_
     let denominator = (amount_reserve_in as u128) * 1000 + amount_in_with_fee;
     let amount_out = (numerator / denominator as u64);
     amount_out
+}
+
+fun calculate_amount_in(amount_out: u64, amount_reserve_in: u64, amount_reserve_out: u64): u64 {
+    assert!(amount_out > 0, EInsufficientOutputAmount);
+    assert!(amount_reserve_in > 0 && amount_reserve_out > 0, EInsufficientLiquidity);
+    let numerator = (amount_reserve_in as u128) * (amount_out as u128) * 1000;
+    let denominator = ((amount_reserve_out - amount_out) as u128) * 997;
+    let amount_in = 1 + ((numerator / denominator) as u64);
+    amount_in
 }
 
 /// Given an amount of an asset and pair reserves,
