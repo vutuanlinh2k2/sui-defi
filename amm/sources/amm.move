@@ -1,6 +1,6 @@
 module amm::amm;
 
-use amm::pair::{Self, Pair};
+use amm::pair::{Self, Pair, LPToken};
 use amm::registry::{Registry, AmmAdminCap};
 use amm::utils::assert_identical_and_check_coins_order;
 use sui::balance::{Self, Balance};
@@ -41,8 +41,8 @@ public fun add_liquidity_and_mint_lp_token<CoinA, CoinB>(
     pair: &mut Pair,
     coin_a: Coin<CoinA>,
     coin_b: Coin<CoinB>,
-    amount_min_a: u64,
-    amount_min_b: u64,
+    amount_a_min: u64,
+    amount_b_min: u64,
     deadline_timestamp_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,  
@@ -57,8 +57,8 @@ public fun add_liquidity_and_mint_lp_token<CoinA, CoinB>(
             pair,
             coin_a,
             coin_b,
-            amount_min_a,
-            amount_min_b,
+            amount_a_min,
+            amount_b_min,
             clock,
             ctx,
         );
@@ -68,12 +68,31 @@ public fun add_liquidity_and_mint_lp_token<CoinA, CoinB>(
             pair,
             coin_b,
             coin_a,
-            amount_min_b,
-            amount_min_a,
+            amount_b_min,
+            amount_a_min,
             clock,
             ctx,
         );
     }
+}
+
+/// If the tokens are not in canonical order, this will raise error
+public fun remove_liquidity_and_burn_lp_token<CoinA, CoinB>(
+    registry: &Registry,
+    pair: &mut Pair,
+    coin_lp: Coin<LPToken<CoinA, CoinB>>,
+    amount_a_min: u64,
+    amount_b_min: u64,
+    deadline_timestamp_ms: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    assert_deadline(deadline_timestamp_ms, clock);
+
+    let (balance_a, balance_b) = pair::remove_liquidity_and_burn_lp_token<CoinA, CoinB>(registry, pair, coin::into_balance(coin_lp), amount_a_min, amount_b_min, clock);
+
+    send_coin_if_not_zero(balance_a, ctx.sender(), ctx);
+    send_coin_if_not_zero(balance_b, ctx.sender(), ctx);
 }
 
 // === Public Functions (View) ===
@@ -138,8 +157,8 @@ fun add_liquidity_and_mint_lp_token_internal<CoinA, CoinB>(
     pair: &mut Pair,
     coin_a: Coin<CoinA>,
     coin_b: Coin<CoinB>,
-    amount_min_a: u64,
-    amount_min_b: u64,
+    amount_a_min: u64,
+    amount_b_min: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
@@ -151,8 +170,8 @@ fun add_liquidity_and_mint_lp_token_internal<CoinA, CoinB>(
         pair,
         balance_a,
         balance_b,
-        amount_min_a,
-        amount_min_b,
+        amount_a_min,
+        amount_b_min,
         clock,
     );
 

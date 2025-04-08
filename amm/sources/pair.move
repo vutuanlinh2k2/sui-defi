@@ -16,6 +16,9 @@ const EInsufficientLiquidity: u64 = 3;
 const EInsufficientAmountOfCoinB: u64 = 4;
 const EInsufficientAmountOfCoinA: u64 = 5;
 const EInsufficientAmountOfCoins: u64 = 6;
+const EInsufficientLPTokenMinted: u64 = 7;
+const EInsufficientLPTokenBurned: u64 = 8;
+const EInsufficientWithdrawAmount: u64 = 9;
 
 // === Structs ===
 public struct Pair has key {
@@ -41,6 +44,7 @@ public struct PairInner<phantom CoinA, phantom CoinB> has store {
 public struct LPToken<phantom CoinA, phantom CoinB> has drop {}
 
 // === Events ===
+// TODO: add new events + fields
 public struct MintEvent {}
 public struct BurnEvent {}
 public struct SwapEvent {}
@@ -114,7 +118,7 @@ public(package) fun add_liquidity_and_mint_lp_token<CoinA, CoinB>(
     self: &mut Pair,
     mut balance_a: Balance<CoinA>,
     mut balance_b: Balance<CoinB>,
-    amount_min_a: u64,
+    amount_a_min: u64,
     amount_b_min: u64,
     clock: &Clock,
 ): (Balance<LPToken<CoinA, CoinB>>, Balance<CoinA>, Balance<CoinB>) {
@@ -122,13 +126,13 @@ public(package) fun add_liquidity_and_mint_lp_token<CoinA, CoinB>(
         self,
         balance::value(&balance_a),
         balance::value(&balance_b),
-        amount_min_a,
+        amount_a_min,
         amount_b_min,
     );
     let amount_lp_mint = calculate_lp_amount_to_mint<CoinA, CoinB>(self, amount_a, amount_b);
 
     let self = self.load_inner_mut();
-    let fees_on = check_and_mint_fees(registry, self);
+    let fees_on = check_fees_on_and_mint(registry, self);
 
     // split the initial Balance the user puts in and add them the to reserve
     // the remainders will still stay in the balances (can be 0)
@@ -142,6 +146,34 @@ public(package) fun add_liquidity_and_mint_lp_token<CoinA, CoinB>(
     (balance_lp, balance_a, balance_b)
 }
 
+public(package) fun remove_liquidity_and_burn_lp_token<CoinA, CoinB>(
+    registry: &Registry,
+    self: &mut Pair,
+    lp_balance: Balance<LPToken<CoinA, CoinB>>,
+    amount_a_min: u64,
+    amount_b_min: u64,
+    clock: &Clock
+): (Balance<CoinA>, Balance<CoinB>) {
+    let (withdraw_amount_a, withdraw_amount_b) = calculate_amount_to_withdraw<CoinA, CoinB>(
+        self,
+        balance::value(&lp_balance),
+    );
+
+    assert!(withdraw_amount_a >= amount_a_min && withdraw_amount_b >= amount_b_min, EInsufficientWithdrawAmount);
+
+    let self = self.load_inner_mut<CoinA, CoinB>();
+    let fees_on = check_fees_on_and_mint(registry, self);
+
+    balance::decrease_supply(&mut self.lp_token_supply, lp_balance);
+
+    let withdraw_balance_a = balance::split(&mut self.coin_a_reserve, withdraw_amount_a);
+    let withdraw_balance_b = balance::split(&mut self.coin_b_reserve, withdraw_amount_b);
+
+    update(self, fees_on, clock);
+
+    (withdraw_balance_a, withdraw_balance_b)
+}
+
 // Change this function to return a mutable reference
 public(package) fun fees_mut<CoinA, CoinB>(self: &mut Pair): &mut Balance<LPToken<CoinA, CoinB>> {
     let self = self.load_inner_mut<CoinA, CoinB>();
@@ -150,15 +182,14 @@ public(package) fun fees_mut<CoinA, CoinB>(self: &mut Pair): &mut Balance<LPToke
 
 // === Private Functions ===
 
-fun check_and_mint_fees<CoinA, CoinB>(
+fun check_fees_on_and_mint<CoinA, CoinB>(
     registry: &Registry,
     self: &mut PairInner<CoinA, CoinB>,
 ): bool {
     let fees_on = option::is_some(&registry.fees_claimer());
     let k_last = self.k_last;
 
-    if (fees_on) {
-        if (k_last != 0) {
+    if (fees_on) { if (k_last != 0) {
             let amount_reserve_a = balance::value(&self.coin_a_reserve);
             let amount_reserve_b = balance::value(&self.coin_b_reserve);
             let lp_token_supply = balance::supply_value(&self.lp_token_supply);
@@ -176,10 +207,9 @@ fun check_and_mint_fees<CoinA, CoinB>(
                     );
                 }
             }
-        } else if (k_last != 0) {
+        } else {
             self.k_last = 0;
-        }
-    };
+        } };
 
     fees_on
 }
@@ -209,7 +239,7 @@ fun calculate_coin_amounts_to_provide<CoinA, CoinB>(
     self: &Pair,
     amount_a: u64,
     amount_b: u64,
-    amount_min_a: u64,
+    amount_a_min: u64,
     amount_b_min: u64,
 ): (u64, u64) {
     assert!(amount_a > 0 && amount_b > 0, EInsufficientAmountOfCoins);
@@ -230,7 +260,7 @@ fun calculate_coin_amounts_to_provide<CoinA, CoinB>(
         } else {
             let amount_a_optimal = quote(amount_b, reserve_b, reserve_a);
             assert!(amount_a_optimal < amount_a);
-            assert!(amount_a_optimal >= amount_min_a, EInsufficientAmountOfCoinA);
+            assert!(amount_a_optimal >= amount_a_min, EInsufficientAmountOfCoinA);
             (amount_a_optimal, amount_b)
         }
     }
@@ -243,12 +273,11 @@ fun calculate_lp_amount_to_mint<CoinA, CoinB>(self: &mut Pair, amount_a: u64, am
         balance::value(&self.coin_b_reserve),
     );
     let total_lp_supply = balance::supply_value(&self.lp_token_supply);
-    let liquidity = if (total_lp_supply == 0) {
+    let mint_amount = if (total_lp_supply == 0) {
         balance::join(
             &mut self.lp_locked,
             balance::increase_supply(&mut self.lp_token_supply, MINIMUM_LIQUIDITY),
         );
-        // An error will be thrown when underflow happens
         ((std::u128::sqrt((amount_a as u128) * (amount_b as u128)) as u64) - MINIMUM_LIQUIDITY)
     } else {
         std::u64::min(
@@ -256,8 +285,25 @@ fun calculate_lp_amount_to_mint<CoinA, CoinB>(self: &mut Pair, amount_a: u64, am
             (((amount_b as u128) * (total_lp_supply as u128)) / (reserve_b as u128)  as u64),
         )
     };
+    assert!(mint_amount > 0, EInsufficientLPTokenMinted);
 
-    liquidity
+    mint_amount
+}
+
+fun calculate_amount_to_withdraw<CoinA, CoinB>(self: &mut Pair, amount_lp: u64): (u64, u64) {
+    let self = self.load_inner_mut<CoinA, CoinB>();
+    let (reserve_a, reserve_b) = (
+        balance::value(&self.coin_a_reserve),
+        balance::value(&self.coin_b_reserve),
+    );
+    let total_lp_supply = balance::supply_value(&self.lp_token_supply);
+
+    let withdraw_amount_a = ((amount_lp as u128) * (reserve_a as u128) / (total_lp_supply as u128) as u64);
+    let withdraw_amount_b = ((amount_lp as u128) * (reserve_b as u128) / (total_lp_supply as u128) as u64);
+
+    assert!(withdraw_amount_a > 0 && withdraw_amount_b > 0, EInsufficientLPTokenBurned);
+
+    (withdraw_amount_a, withdraw_amount_b)
 }
 
 /// Given an amount of an asset and pair reserves,
