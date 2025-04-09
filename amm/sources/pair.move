@@ -16,8 +16,8 @@ const EInsufficientLiquidity: u64 = 3;
 const EInsufficientAmountOfCoinB: u64 = 4;
 const EInsufficientAmountOfCoinA: u64 = 5;
 const EInsufficientAmountOfCoins: u64 = 6;
-const EInsufficientLPTokenMinted: u64 = 7;
-const EInsufficientLPTokenBurned: u64 = 8;
+const EInsufficientLPCoinMinted: u64 = 7;
+const EInsufficientLPCoinBurned: u64 = 8;
 const EInsufficientWithdrawAmount: u64 = 9;
 const EInsufficientAmountIn: u64 = 10;
 const EInsufficientAmountOut: u64 = 11;
@@ -39,13 +39,13 @@ public struct PairInner<phantom CoinA, phantom CoinB> has store {
     k_last: u128,
     coin_a_reserve: Balance<CoinA>,
     coin_b_reserve: Balance<CoinB>,
-    fees: Balance<LPToken<CoinA, CoinB>>, // fees collected by the protocol from trading
-    lp_locked: Balance<LPToken<CoinA, CoinB>>, // Locked LP Tokens to ensure minimum liquidity
-    lp_token_supply: Supply<LPToken<CoinA, CoinB>>,
+    fees: Balance<LPCoin<CoinA, CoinB>>, // fees collected by the protocol from trading
+    lp_locked: Balance<LPCoin<CoinA, CoinB>>, // Locked LP Coins to ensure minimum liquidity
+    lp_coin_supply: Supply<LPCoin<CoinA, CoinB>>,
 }
 
-/// Tokens representing a user's share of a pair
-public struct LPToken<phantom CoinA, phantom CoinB> has drop {}
+/// Coins representing a user's share of a pair
+public struct LPCoin<phantom CoinA, phantom CoinB> has drop {}
 
 // === Events ===
 // TODO: add new events + fields
@@ -59,16 +59,16 @@ public struct UpdateEvent {}
 // === Package Functions ===
 
 /// CoinA and CoinB should already in canonical order
-public(package) fun create_pair_and_mint_lp_token<CoinA, CoinB>(
+public(package) fun create_pair_and_mint_lp_coin<CoinA, CoinB>(
     registry: &mut Registry,
     balance_a: Balance<CoinA>,
     balance_b: Balance<CoinB>,
     clock: &Clock,
     ctx: &mut TxContext,
-): (Balance<LPToken<CoinA, CoinB>>, ID) {
+): (Balance<LPCoin<CoinA, CoinB>>, ID) {
     let pair_id = object::new(ctx);
 
-    let mut lp_token_supply = balance::create_supply(LPToken<CoinA, CoinB> {});
+    let mut lp_coin_supply = balance::create_supply(LPCoin<CoinA, CoinB> {});
 
     let pair_inner = PairInner<CoinA, CoinB> {
         pair_id: pair_id.to_inner(),
@@ -79,9 +79,9 @@ public(package) fun create_pair_and_mint_lp_token<CoinA, CoinB>(
         price_last_update_timestamp_s: clock.timestamp_ms() / 1000,
         coin_a_reserve: balance::zero<CoinA>(),
         coin_b_reserve: balance::zero<CoinB>(),
-        fees: balance::increase_supply(&mut lp_token_supply, 0),
-        lp_locked: balance::increase_supply(&mut lp_token_supply, 0),
-        lp_token_supply: lp_token_supply,
+        fees: balance::increase_supply(&mut lp_coin_supply, 0),
+        lp_locked: balance::increase_supply(&mut lp_coin_supply, 0),
+        lp_coin_supply: lp_coin_supply,
     };
 
     let mut pair = Pair {
@@ -97,9 +97,9 @@ public(package) fun create_pair_and_mint_lp_token<CoinA, CoinB>(
         balance::value(&balance_b),
     );
 
-    let (balance_lp, balance_a, balance_b) = add_liquidity_and_mint_lp_token<CoinA, CoinB>(
-        registry,
+    let (balance_lp, balance_a, balance_b) = add_liquidity_and_mint_lp_coin<CoinA, CoinB>(
         &mut pair,
+        registry,
         balance_a,
         balance_b,
         balance_a_value,
@@ -109,7 +109,7 @@ public(package) fun create_pair_and_mint_lp_token<CoinA, CoinB>(
 
     transfer::share_object(pair);
 
-    // When creating a pair, there is no remainder of the 2 tokens
+    // When creating a pair, there is no remainder of the 2 coins
     balance::destroy_zero(balance_a);
     balance::destroy_zero(balance_b);
 
@@ -117,15 +117,15 @@ public(package) fun create_pair_and_mint_lp_token<CoinA, CoinB>(
 }
 
 /// CoinA and CoinB should already in canonical order
-public(package) fun add_liquidity_and_mint_lp_token<CoinA, CoinB>(
-    registry: &Registry,
+public(package) fun add_liquidity_and_mint_lp_coin<CoinA, CoinB>(
     self: &mut Pair,
+    registry: &Registry,
     mut balance_a: Balance<CoinA>,
     mut balance_b: Balance<CoinB>,
     amount_a_min: u64,
     amount_b_min: u64,
     clock: &Clock,
-): (Balance<LPToken<CoinA, CoinB>>, Balance<CoinA>, Balance<CoinB>) {
+): (Balance<LPCoin<CoinA, CoinB>>, Balance<CoinA>, Balance<CoinB>) {
     let (amount_a, amount_b) = calculate_coin_amounts_to_provide<CoinA, CoinB>(
         self,
         balance::value(&balance_a),
@@ -143,7 +143,7 @@ public(package) fun add_liquidity_and_mint_lp_token<CoinA, CoinB>(
     balance::join(&mut self.coin_a_reserve, balance::split(&mut balance_a, amount_a));
     balance::join(&mut self.coin_b_reserve, balance::split(&mut balance_b, amount_b));
 
-    let balance_lp = balance::increase_supply(&mut self.lp_token_supply, amount_lp_mint);
+    let balance_lp = balance::increase_supply(&mut self.lp_coin_supply, amount_lp_mint);
 
     update(self, clock);
 
@@ -154,10 +154,10 @@ public(package) fun add_liquidity_and_mint_lp_token<CoinA, CoinB>(
     (balance_lp, balance_a, balance_b)
 }
 
-public(package) fun remove_liquidity_and_burn_lp_token<CoinA, CoinB>(
-    registry: &Registry,
+public(package) fun remove_liquidity_and_burn_lp_coin<CoinA, CoinB>(
     self: &mut Pair,
-    lp_balance: Balance<LPToken<CoinA, CoinB>>,
+    registry: &Registry,
+    lp_balance: Balance<LPCoin<CoinA, CoinB>>,
     amount_a_min: u64,
     amount_b_min: u64,
     clock: &Clock
@@ -172,7 +172,7 @@ public(package) fun remove_liquidity_and_burn_lp_token<CoinA, CoinB>(
     let self = self.load_inner_mut<CoinA, CoinB>();
     let fees_on = check_fees_on_and_mint(registry, self);
 
-    balance::decrease_supply(&mut self.lp_token_supply, lp_balance);
+    balance::decrease_supply(&mut self.lp_coin_supply, lp_balance);
 
     let withdraw_balance_a = balance::split(&mut self.coin_a_reserve, withdraw_amount_a);
     let withdraw_balance_b = balance::split(&mut self.coin_b_reserve, withdraw_amount_b);
@@ -210,7 +210,7 @@ public(package) fun swap_exact_coins_for_coins<CoinIn, CoinOut>(
 
 public(package) fun swap_coins_for_exact_coins<CoinIn, CoinOut>(
     self: &mut Pair,
-    mut balance_in: Balance<CoinIn>, // TODO: don't understand syntax?
+    mut balance_in: Balance<CoinIn>,
     amount_out: u64,
     is_coin_in_the_first_in_order: bool
 ): (Balance<CoinIn> , Balance<CoinOut>) {
@@ -230,7 +230,7 @@ public(package) fun swap_coins_for_exact_coins<CoinIn, CoinOut>(
 }
 
 // Change this function to return a mutable reference
-public(package) fun fees_mut<CoinA, CoinB>(self: &mut Pair): &mut Balance<LPToken<CoinA, CoinB>> {
+public(package) fun fees_mut<CoinA, CoinB>(self: &mut Pair): &mut Balance<LPCoin<CoinA, CoinB>> {
     let self = self.load_inner_mut<CoinA, CoinB>();
     &mut self.fees
 }
@@ -247,18 +247,18 @@ fun check_fees_on_and_mint<CoinA, CoinB>(
     if (fees_on) { if (k_last != 0) {
             let amount_reserve_a = balance::value(&self.coin_a_reserve);
             let amount_reserve_b = balance::value(&self.coin_b_reserve);
-            let lp_token_supply = balance::supply_value(&self.lp_token_supply);
+            let lp_coin_supply = balance::supply_value(&self.lp_coin_supply);
             let root_k =
                 (std::u128::sqrt((amount_reserve_a as u128) * (amount_reserve_b as u128))) as u64;
             let root_k_last = std::u128::sqrt(k_last) as u64;
             if (root_k > root_k_last) {
-                let numerator = (lp_token_supply as u128) * ((root_k - root_k_last) as u128);
+                let numerator = (lp_coin_supply as u128) * ((root_k - root_k_last) as u128);
                 let denominator = (root_k as u128) * 5 + (root_k_last as u128);
                 let liquidity = (numerator / denominator) as u64;
                 if (liquidity > 0) {
                     balance::join(
                         &mut self.fees,
-                        balance::increase_supply(&mut self.lp_token_supply, liquidity),
+                        balance::increase_supply(&mut self.lp_coin_supply, liquidity),
                     );
                 }
             }
@@ -324,11 +324,11 @@ fun calculate_lp_amount_to_mint<CoinA, CoinB>(self: &mut Pair, amount_a: u64, am
         balance::value(&self.coin_a_reserve),
         balance::value(&self.coin_b_reserve),
     );
-    let total_lp_supply = balance::supply_value(&self.lp_token_supply);
+    let total_lp_supply = balance::supply_value(&self.lp_coin_supply);
     let mint_amount = if (total_lp_supply == 0) {
         balance::join(
             &mut self.lp_locked,
-            balance::increase_supply(&mut self.lp_token_supply, MINIMUM_LIQUIDITY),
+            balance::increase_supply(&mut self.lp_coin_supply, MINIMUM_LIQUIDITY),
         );
         ((std::u128::sqrt((amount_a as u128) * (amount_b as u128)) as u64) - MINIMUM_LIQUIDITY)
     } else {
@@ -337,7 +337,7 @@ fun calculate_lp_amount_to_mint<CoinA, CoinB>(self: &mut Pair, amount_a: u64, am
             (((amount_b as u128) * (total_lp_supply as u128)) / (reserve_b as u128)  as u64),
         )
     };
-    assert!(mint_amount > 0, EInsufficientLPTokenMinted);
+    assert!(mint_amount > 0, EInsufficientLPCoinMinted);
 
     mint_amount
 }
@@ -348,12 +348,12 @@ fun calculate_amount_to_withdraw<CoinA, CoinB>(self: &mut Pair, amount_lp: u64):
         balance::value(&self.coin_a_reserve),
         balance::value(&self.coin_b_reserve),
     );
-    let total_lp_supply = balance::supply_value(&self.lp_token_supply);
+    let total_lp_supply = balance::supply_value(&self.lp_coin_supply);
 
     let withdraw_amount_a = ((amount_lp as u128) * (reserve_a as u128) / (total_lp_supply as u128) as u64);
     let withdraw_amount_b = ((amount_lp as u128) * (reserve_b as u128) / (total_lp_supply as u128) as u64);
 
-    assert!(withdraw_amount_a > 0 && withdraw_amount_b > 0, EInsufficientLPTokenBurned);
+    assert!(withdraw_amount_a > 0 && withdraw_amount_b > 0, EInsufficientLPCoinBurned);
 
     (withdraw_amount_a, withdraw_amount_b)
 }

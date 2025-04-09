@@ -1,6 +1,6 @@
 module amm::amm;
 
-use amm::pair::{Self, Pair, LPToken};
+use amm::pair::{Self, Pair, LPCoin};
 use amm::registry::{Registry, AmmAdminCap};
 use amm::utils::assert_identical_and_check_coins_order;
 use sui::balance::{Self, Balance};
@@ -13,7 +13,7 @@ const EDeadlinePassed: u64 = 2;
 
 // === Public Mutative Functions ===
 
-public fun create_pair_and_mint_lp_token<CoinA, CoinB>(
+public fun create_pair_and_mint_lp_coin<CoinA, CoinB>(
     registry: &mut Registry,
     coin_a: Coin<CoinA>,
     coin_b: Coin<CoinB>,
@@ -28,15 +28,15 @@ public fun create_pair_and_mint_lp_token<CoinA, CoinB>(
     let coins_in_order = assert_identical_and_check_coins_order<CoinA, CoinB>();
 
     let pair_id = if (coins_in_order) {
-        create_pair_and_mint_lp_token_internal(registry, coin_a, coin_b, clock, ctx)
+        create_pair_and_mint_lp_coin_internal(registry, coin_a, coin_b, clock, ctx)
     } else {
-        create_pair_and_mint_lp_token_internal(registry, coin_b, coin_a, clock, ctx)
+        create_pair_and_mint_lp_coin_internal(registry, coin_b, coin_a, clock, ctx)
     };
 
     pair_id
 }
 
-public fun add_liquidity_and_mint_lp_token<CoinA, CoinB>(
+public fun add_liquidity_and_mint_lp_coin<CoinA, CoinB>(
     registry: &Registry,
     pair: &mut Pair,
     coin_a: Coin<CoinA>,
@@ -46,13 +46,13 @@ public fun add_liquidity_and_mint_lp_token<CoinA, CoinB>(
     deadline_timestamp_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,  
-) {
+) {  
     assert_deadline(deadline_timestamp_ms, clock);
 
     let coins_in_order = assert_identical_and_check_coins_order<CoinA, CoinB>();
 
     if (coins_in_order) {
-        add_liquidity_and_mint_lp_token_internal(
+        add_liquidity_and_mint_lp_coin_internal(
             registry,
             pair,
             coin_a,
@@ -63,7 +63,7 @@ public fun add_liquidity_and_mint_lp_token<CoinA, CoinB>(
             ctx,
         );
     } else {
-        add_liquidity_and_mint_lp_token_internal(
+        add_liquidity_and_mint_lp_coin_internal(
             registry,
             pair,
             coin_b,
@@ -76,11 +76,11 @@ public fun add_liquidity_and_mint_lp_token<CoinA, CoinB>(
     }
 }
 
-/// If the tokens are not in canonical order, this will raise error
-public fun remove_liquidity_and_burn_lp_token<CoinA, CoinB>(
+/// If the coins are not in canonical order, this will raise error
+public fun remove_liquidity_and_burn_lp_coin<CoinA, CoinB>(
     registry: &Registry,
     pair: &mut Pair,
-    coin_lp: Coin<LPToken<CoinA, CoinB>>,
+    coin_lp: Coin<LPCoin<CoinA, CoinB>>,
     amount_a_min: u64,
     amount_b_min: u64,
     deadline_timestamp_ms: u64,
@@ -89,7 +89,7 @@ public fun remove_liquidity_and_burn_lp_token<CoinA, CoinB>(
 ) {
     assert_deadline(deadline_timestamp_ms, clock);
 
-    let (balance_a, balance_b) = pair::remove_liquidity_and_burn_lp_token<CoinA, CoinB>(registry, pair, coin::into_balance(coin_lp), amount_a_min, amount_b_min, clock);
+    let (balance_a, balance_b) = pair.remove_liquidity_and_burn_lp_coin<CoinA, CoinB>(registry, coin::into_balance(coin_lp), amount_a_min, amount_b_min, clock);
 
     send_coin_if_not_zero(balance_a, ctx.sender(), ctx);
     send_coin_if_not_zero(balance_b, ctx.sender(), ctx);
@@ -107,7 +107,7 @@ public fun swap_exact_coins_for_coins<CoinIn, CoinOut>(
 
     let is_coin_in_the_first_in_order = assert_identical_and_check_coins_order<CoinIn, CoinOut>();
     
-    let balance_out = pair::swap_exact_coins_for_coins<CoinIn, CoinOut>(pair, coin::into_balance(coin_in), min_amount_out, is_coin_in_the_first_in_order);
+    let balance_out = pair.swap_exact_coins_for_coins<CoinIn, CoinOut>( coin::into_balance(coin_in), min_amount_out, is_coin_in_the_first_in_order);
 
     send_coin_if_not_zero(balance_out, ctx.sender(), ctx);
 }
@@ -124,7 +124,7 @@ public fun swap_coins_for_exact_coins<CoinIn, CoinOut>(
 
     let is_coin_in_the_first_in_order = assert_identical_and_check_coins_order<CoinIn, CoinOut>();
 
-    let (balance_remainder, balance_out) = pair::swap_coins_for_exact_coins<CoinIn, CoinOut>(pair, coin::into_balance(coin_in), amount_out, is_coin_in_the_first_in_order);
+    let (balance_remainder, balance_out) = pair.swap_coins_for_exact_coins<CoinIn, CoinOut>( coin::into_balance(coin_in), amount_out, is_coin_in_the_first_in_order);
 
     send_coin_if_not_zero(balance_remainder, ctx.sender(), ctx);
     send_coin_if_not_zero(balance_out, ctx.sender(), ctx);
@@ -167,14 +167,14 @@ public fun claim_fees<CoinA, CoinB>(
 }
 
 // === Private Functions ===
-fun create_pair_and_mint_lp_token_internal<CoinA, CoinB>(
+fun create_pair_and_mint_lp_coin_internal<CoinA, CoinB>(
     registry: &mut Registry,
     coin_a: Coin<CoinA>,
     coin_b: Coin<CoinB>,
     clock: &Clock,
     ctx: &mut TxContext,
 ): ID {
-    let (balance_lp, pair_id) = pair::create_pair_and_mint_lp_token(
+    let (balance_lp, pair_id) = pair::create_pair_and_mint_lp_coin(
         registry,
         coin::into_balance(coin_a),
         coin::into_balance(coin_b),
@@ -187,7 +187,7 @@ fun create_pair_and_mint_lp_token_internal<CoinA, CoinB>(
     pair_id
 }
 
-fun add_liquidity_and_mint_lp_token_internal<CoinA, CoinB>(
+fun add_liquidity_and_mint_lp_coin_internal<CoinA, CoinB>(
     registry: &Registry,
     pair: &mut Pair,
     coin_a: Coin<CoinA>,
@@ -200,9 +200,8 @@ fun add_liquidity_and_mint_lp_token_internal<CoinA, CoinB>(
     let balance_a = coin::into_balance(coin_a);
     let balance_b = coin::into_balance(coin_b);
 
-    let (balance_lp, balance_a, balance_b) = pair::add_liquidity_and_mint_lp_token(
+    let (balance_lp, balance_a, balance_b) = pair.add_liquidity_and_mint_lp_coin(
         registry,
-        pair,
         balance_a,
         balance_b,
         amount_a_min,
