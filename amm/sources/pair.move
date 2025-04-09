@@ -136,7 +136,8 @@ public(package) fun add_liquidity_and_mint_lp_coin<CoinA, CoinB>(
     let amount_lp_mint = calculate_lp_amount_to_mint<CoinA, CoinB>(self, amount_a, amount_b);
 
     let self = self.load_inner_mut();
-    let fees_on = check_fees_on_and_mint(registry, self);
+    let fees_on = registry.fees_on();
+    self.mint_fees(fees_on);
 
     // split the initial Balance the user puts in and add them the to reserve
     // the remainders will still stay in the balances (can be 0)
@@ -170,7 +171,8 @@ public(package) fun remove_liquidity_and_burn_lp_coin<CoinA, CoinB>(
     assert!(withdraw_amount_a >= amount_a_min && withdraw_amount_b >= amount_b_min, EInsufficientWithdrawAmount);
 
     let self = self.load_inner_mut<CoinA, CoinB>();
-    let fees_on = check_fees_on_and_mint(registry, self);
+    let fees_on = registry.fees_on();
+    self.mint_fees(fees_on);
 
     balance::decrease_supply(&mut self.lp_coin_supply, lp_balance);
 
@@ -237,11 +239,10 @@ public(package) fun fees_mut<CoinA, CoinB>(self: &mut Pair): &mut Balance<LPCoin
 
 // === Private Functions ===
 
-fun check_fees_on_and_mint<CoinA, CoinB>(
-    registry: &Registry,
+fun mint_fees<CoinA, CoinB>(
     self: &mut PairInner<CoinA, CoinB>,
+    fees_on: bool
 ): bool {
-    let fees_on = option::is_some(&registry.fees_claimer());
     let k_last = self.k_last;
 
     if (fees_on) { if (k_last != 0) {
@@ -254,11 +255,11 @@ fun check_fees_on_and_mint<CoinA, CoinB>(
             if (root_k > root_k_last) {
                 let numerator = (lp_coin_supply as u128) * ((root_k - root_k_last) as u128);
                 let denominator = (root_k as u128) * 5 + (root_k_last as u128);
-                let liquidity = (numerator / denominator) as u64;
-                if (liquidity > 0) {
+                let fees_amount = (numerator / denominator) as u64;
+                if (fees_amount > 0) {
                     balance::join(
                         &mut self.fees,
-                        balance::increase_supply(&mut self.lp_coin_supply, liquidity),
+                        balance::increase_supply(&mut self.lp_coin_supply, fees_amount),
                     );
                 }
             }
@@ -269,7 +270,7 @@ fun check_fees_on_and_mint<CoinA, CoinB>(
     fees_on
 }
 
-/// Update price cumulative, and price_last_update_timestamp_s
+/// Update price cumulative and last update timestamp
 fun update<CoinA, CoinB>(self: &mut PairInner<CoinA, CoinB>, clock: &Clock) {
     let current_time_s = clock::timestamp_ms(clock) / 1000;
     let time_elapsed_s = current_time_s - self.price_last_update_timestamp_s;

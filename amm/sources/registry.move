@@ -135,6 +135,11 @@ public(package) fun fees_claimer(self: &Registry): Option<address> {
     self.fees_claimer
 }
 
+public(package) fun fees_on(self:&Registry): bool {
+    let self = self.load_inner();
+    option::is_some(&self.fees_claimer)
+}
+
 // === Private Functions ===
 
 fun get_pair_key<CoinA, CoinB>(): PairKey {
