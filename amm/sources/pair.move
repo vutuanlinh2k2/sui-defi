@@ -2,8 +2,10 @@ module amm::pair;
 
 use amm::constants;
 use amm::registry::Registry;
+use std::type_name::{Self, TypeName};
 use sui::balance::{Self, Balance, Supply};
 use sui::clock::{Self, Clock};
+use sui::event;
 use sui::vec_set::VecSet;
 use sui::versioned::{Self, Versioned};
 
@@ -48,13 +50,42 @@ public struct PairInner<phantom CoinA, phantom CoinB> has store {
 public struct LPCoin<phantom CoinA, phantom CoinB> has drop {}
 
 // === Events ===
-// TODO: add new events + fields
-public struct MintEvent {}
-public struct BurnEvent {}
-public struct SwapEvent {}
-public struct UpdateEvent {}
+public struct PairCreatedEvent has copy, drop {
+    pair_id: ID,
+    sender: address,
+    coin_type_a: TypeName,
+    coin_type_b: TypeName
+}
 
-// === Admin Functions ===
+public struct MintEvent has copy, drop {
+    pair_id: ID,
+    sender: address,
+    amount_a: u64, // Provided amount of a
+    amount_b: u64, // Provided amount of b
+    amount_lp: u64, // Mint amount of lp
+}
+
+public struct BurnEvent has copy, drop {
+    pair_id: ID,
+    sender: address,
+    amount_a: u64, // Withdraw amount of a
+    amount_b: u64, // Withdraw amount of b
+    amount_lp: u64, // Burn amount of lp
+}
+
+public struct SwapEvent has copy, drop {
+    pair_id: ID,
+    sender: address,
+    amount_a_in: u64,
+    amount_a_out: u64,
+    amount_b_in: u64,
+    amount_b_out: u64,
+}
+
+public struct UpdateEvent has copy, drop {
+    amount_reserve_a: u64,
+    amount_reserve_b: u64
+}
 
 // === Package Functions ===
 
@@ -92,6 +123,15 @@ public(package) fun create_pair_and_mint_lp_coin<CoinA, CoinB>(
     let pair_id = object::id(&pair);
     registry.register_pair<CoinA, CoinB>(pair_id);
 
+    event::emit(
+        PairCreatedEvent {
+            pair_id,
+            sender: ctx.sender(),
+            coin_type_a: type_name::get<CoinA>(),
+            coin_type_b: type_name::get<CoinB>()
+        }
+    );
+
     let (balance_a_value, balance_b_value) = (
         balance::value(&balance_a),
         balance::value(&balance_b),
@@ -105,6 +145,7 @@ public(package) fun create_pair_and_mint_lp_coin<CoinA, CoinB>(
         balance_a_value,
         balance_b_value,
         clock,
+        ctx,
     );
 
     transfer::share_object(pair);
@@ -125,7 +166,9 @@ public(package) fun add_liquidity_and_mint_lp_coin<CoinA, CoinB>(
     amount_a_min: u64,
     amount_b_min: u64,
     clock: &Clock,
+    ctx: &TxContext,
 ): (Balance<LPCoin<CoinA, CoinB>>, Balance<CoinA>, Balance<CoinB>) {
+    let pair_id = object::id(self);
     let (amount_a, amount_b) = calculate_coin_amounts_to_provide<CoinA, CoinB>(
         self,
         balance::value(&balance_a),
@@ -152,6 +195,16 @@ public(package) fun add_liquidity_and_mint_lp_coin<CoinA, CoinB>(
         self.k_last = (balance::value(&self.coin_a_reserve) as u128) * (balance::value(&self.coin_b_reserve) as u128);
     };
 
+    event::emit(
+        MintEvent {
+            pair_id,
+            sender: ctx.sender(),
+            amount_a,
+            amount_b,
+            amount_lp: amount_lp_mint
+        }
+    );
+
     (balance_lp, balance_a, balance_b)
 }
 
@@ -161,11 +214,15 @@ public(package) fun remove_liquidity_and_burn_lp_coin<CoinA, CoinB>(
     lp_balance: Balance<LPCoin<CoinA, CoinB>>,
     amount_a_min: u64,
     amount_b_min: u64,
-    clock: &Clock
+    clock: &Clock,
+    ctx: &TxContext
 ): (Balance<CoinA>, Balance<CoinB>) {
+    let pair_id = object::id(self);
+    let amount_lp= balance::value(&lp_balance);
+
     let (withdraw_amount_a, withdraw_amount_b) = calculate_amount_to_withdraw<CoinA, CoinB>(
         self,
-        balance::value(&lp_balance),
+        amount_lp,
     );
 
     assert!(withdraw_amount_a >= amount_a_min && withdraw_amount_b >= amount_b_min, EInsufficientWithdrawAmount);
@@ -185,6 +242,16 @@ public(package) fun remove_liquidity_and_burn_lp_coin<CoinA, CoinB>(
         self.k_last = (balance::value(&self.coin_a_reserve) as u128) * (balance::value(&self.coin_b_reserve) as u128);
     };
 
+    event::emit(
+        BurnEvent {
+            pair_id,
+            sender: ctx.sender(),
+            amount_a: withdraw_amount_a,
+            amount_b: withdraw_amount_b,
+            amount_lp
+        }
+    );
+
     (withdraw_balance_a, withdraw_balance_b)
 }
 
@@ -192,21 +259,51 @@ public(package) fun swap_exact_coins_for_coins<CoinIn, CoinOut>(
     self: &mut Pair,
     balance_in: Balance<CoinIn>,
     min_amount_out: u64,
-    is_coin_in_the_first_in_order: bool
+    is_coin_in_the_first_in_order: bool,
+    ctx: &TxContext
 ): Balance<CoinOut> {
+    let pair_id = object::id(self);
+
+        let amount_in = balance::value(&balance_in);
 
     if (is_coin_in_the_first_in_order) {
         let self = self.load_inner_mut<CoinIn, CoinOut>();
-        let amount_out = calculate_amount_out(balance::value(&balance_in), balance::value(&self.coin_a_reserve), balance::value(&self.coin_b_reserve));
+        let amount_out = calculate_amount_out(amount_in, balance::value(&self.coin_a_reserve), balance::value(&self.coin_b_reserve));
         assert!(amount_out >= min_amount_out, EInsufficientAmountOut);
         balance::join(&mut self.coin_a_reserve, balance_in);
-        balance::split(&mut self.coin_b_reserve, amount_out)
+        let balance_out = balance::split(&mut self.coin_b_reserve, amount_out);
+
+        event::emit(
+            SwapEvent {
+                pair_id,
+                sender: ctx.sender(),
+                amount_a_in: amount_in,
+                amount_b_in: 0,
+                amount_a_out: 0,
+                amount_b_out: amount_out
+            }
+        );
+
+        balance_out
     } else {
         let self = self.load_inner_mut<CoinOut, CoinIn>();
-        let amount_out = calculate_amount_out(balance::value(&balance_in), balance::value(&self.coin_a_reserve), balance::value(&self.coin_b_reserve));
+        let amount_out = calculate_amount_out(amount_in, balance::value(&self.coin_a_reserve), balance::value(&self.coin_b_reserve));
         assert!(amount_out >= min_amount_out, EInsufficientAmountOut);
         balance::join(&mut self.coin_b_reserve, balance_in);
-        balance::split(&mut self.coin_a_reserve, amount_out)
+        let balance_out = balance::split(&mut self.coin_a_reserve, amount_out);
+
+        event::emit(
+            SwapEvent {
+                pair_id,
+                sender: ctx.sender(),
+                amount_a_in: 0,
+                amount_b_in: amount_in,
+                amount_a_out: amount_out,
+                amount_b_out: 0
+            }
+        );
+
+        balance_out
     }
 }
 
@@ -231,7 +328,6 @@ public(package) fun swap_coins_for_exact_coins<CoinIn, CoinOut>(
     }
 }
 
-// Change this function to return a mutable reference
 public(package) fun fees_mut<CoinA, CoinB>(self: &mut Pair): &mut Balance<LPCoin<CoinA, CoinB>> {
     let self = self.load_inner_mut<CoinA, CoinB>();
     &mut self.fees
@@ -286,6 +382,13 @@ fun update<CoinA, CoinB>(self: &mut PairInner<CoinA, CoinB>, clock: &Clock) {
     };
 
     self.price_last_update_timestamp_s = current_time_s;
+
+    event::emit(
+        UpdateEvent {
+            amount_reserve_a,
+            amount_reserve_b,
+        }
+    );
 }
 
 fun calculate_coin_amounts_to_provide<CoinA, CoinB>(

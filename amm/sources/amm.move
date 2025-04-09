@@ -89,7 +89,7 @@ public fun remove_liquidity_and_burn_lp_coin<CoinA, CoinB>(
 ) {
     assert_deadline(deadline_timestamp_ms, clock);
 
-    let (balance_a, balance_b) = pair.remove_liquidity_and_burn_lp_coin<CoinA, CoinB>(registry, coin::into_balance(coin_lp), amount_a_min, amount_b_min, clock);
+    let (balance_a, balance_b) = pair.remove_liquidity_and_burn_lp_coin<CoinA, CoinB>(registry, coin::into_balance(coin_lp), amount_a_min, amount_b_min, clock,ctx);
 
     send_coin_if_not_zero(balance_a, ctx.sender(), ctx);
     send_coin_if_not_zero(balance_b, ctx.sender(), ctx);
@@ -107,7 +107,7 @@ public fun swap_exact_coins_for_coins<CoinIn, CoinOut>(
 
     let is_coin_in_the_first_in_order = assert_identical_and_check_coins_order<CoinIn, CoinOut>();
     
-    let balance_out = pair.swap_exact_coins_for_coins<CoinIn, CoinOut>( coin::into_balance(coin_in), min_amount_out, is_coin_in_the_first_in_order);
+    let balance_out = pair.swap_exact_coins_for_coins<CoinIn, CoinOut>( coin::into_balance(coin_in), min_amount_out, is_coin_in_the_first_in_order, ctx);
 
     send_coin_if_not_zero(balance_out, ctx.sender(), ctx);
 }
@@ -207,6 +207,7 @@ fun add_liquidity_and_mint_lp_coin_internal<CoinA, CoinB>(
         amount_a_min,
         amount_b_min,
         clock,
+        ctx
     );
 
     send_coin_if_not_zero(balance_lp, ctx.sender(), ctx);
