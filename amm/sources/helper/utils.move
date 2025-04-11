@@ -18,6 +18,7 @@ public(package) fun assert_identical_and_check_coins_order<CoinA, CoinB>(): bool
     }
 }
 
+/// Note: this currently compare the whole type name (eg. 0x3::usdt::USDT)
 fun compare_coin_typename<CoinA, CoinB>(): CoinsOrdering {
     let bytes_a = type_name::get<CoinA>().borrow_string().as_bytes();
     let bytes_b = type_name::get<CoinB>().borrow_string().as_bytes();

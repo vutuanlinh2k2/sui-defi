@@ -142,6 +142,7 @@ public(package) fun fees_on(self:&Registry): bool {
 
 // === Private Functions ===
 
+// TODO: consider move to AMM
 fun get_pair_key<CoinA, CoinB>(): PairKey {
     let coins_in_order = assert_identical_and_check_coins_order<CoinA, CoinB>();
 
@@ -174,4 +175,32 @@ fun load_inner_mut(self: &mut Registry): &mut RegistryInner {
     inner
 }
 
-// TODO: add test functions
+// === Test Functions ===
+
+#[test_only]
+public fun test_registry(ctx: &mut TxContext): ID {
+    let registry_inner = RegistryInner {
+        allowed_versions: vec_set::singleton(constants::current_version()),
+        pairs: table::new(ctx),
+        fees_claimer: option::some(ctx.sender()),
+    };
+
+    let registry = Registry {
+        id: object::new(ctx),
+        inner: versioned::create(
+            constants::current_version(),
+            registry_inner,
+            ctx,
+        ),
+    };
+
+    let id = object::id(&registry);
+    transfer::share_object(registry);
+
+    id
+}
+
+#[test_only]
+public fun get_admin_cap_for_testing(ctx: &mut TxContext): AmmAdminCap {
+    AmmAdminCap { id: object::new(ctx) }
+}

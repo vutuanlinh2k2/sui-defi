@@ -1,6 +1,7 @@
 module amm::pair;
 
 use amm::constants;
+use amm::decimal::{Self, Decimal, add, mul, div};
 use amm::registry::Registry;
 use std::type_name::{Self, TypeName};
 use sui::balance::{Self, Balance, Supply};
@@ -36,8 +37,8 @@ public struct PairInner<phantom CoinA, phantom CoinB> has store {
     pair_id: ID,
     allowed_versions: VecSet<u64>,
     price_last_update_timestamp_s: u64,
-    price_a_cumulative_last: u128,
-    price_b_cumulative_last: u128,
+    price_a_cumulative_last: Decimal,
+    price_b_cumulative_last: Decimal,
     k_last: u128,
     coin_a_reserve: Balance<CoinA>,
     coin_b_reserve: Balance<CoinB>,
@@ -87,6 +88,51 @@ public struct UpdateEvent has copy, drop {
     amount_reserve_b: u64
 }
 
+// === Public View Functions ===
+public fun allowed_versions<CoinA, CoinB>(self: &Pair): VecSet<u64> {
+    let self = self.load_inner<CoinA, CoinB>();
+    self.allowed_versions
+}
+
+public fun price_last_update_timestamp_s<CoinA, CoinB>(self: &Pair): u64 {
+    let self = self.load_inner<CoinA, CoinB>();
+    self.price_last_update_timestamp_s
+}
+
+public fun price_cumulative_last<CoinA, CoinB>(self: &Pair): (Decimal, Decimal) {
+    let self = self.load_inner<CoinA, CoinB>();
+    (self.price_a_cumulative_last, self.price_b_cumulative_last)
+}
+
+public fun k_last<CoinA, CoinB>(self: &Pair): u128 {
+    let self = self.load_inner<CoinA, CoinB>();
+    self.k_last
+}
+
+public fun reserves_amount<CoinA, CoinB>(self: &Pair): (u64, u64) {
+    let self = self.load_inner<CoinA, CoinB>();
+    (balance::value(&self.coin_a_reserve), balance::value(&self.coin_b_reserve))
+}
+
+public fun fees_amount<CoinA, CoinB>(self: &Pair): u64 {
+    let self = self.load_inner<CoinA, CoinB>();
+    balance::value(&self.fees)
+}
+
+public fun lp_locked_amount<CoinA, CoinB>(self: &Pair): u64 {
+    let self = self.load_inner<CoinA, CoinB>();
+    balance::value(&self.lp_locked)
+}
+
+public fun lp_coin_supply_amount<CoinA, CoinB>(self: &Pair): u64 {
+    let self = self.load_inner<CoinA, CoinB>();
+    balance::supply_value(&self.lp_coin_supply)
+}
+
+public(package) fun minimum_liquidity(): u64 {
+    MINIMUM_LIQUIDITY
+}
+
 // === Package Functions ===
 
 /// CoinA and CoinB should already in canonical order
@@ -104,8 +150,8 @@ public(package) fun create_pair_and_mint_lp_coin<CoinA, CoinB>(
     let pair_inner = PairInner<CoinA, CoinB> {
         pair_id: pair_id.to_inner(),
         allowed_versions: registry.allowed_versions(),
-        price_a_cumulative_last: 0,
-        price_b_cumulative_last: 0,
+        price_a_cumulative_last: decimal::from(0),
+        price_b_cumulative_last: decimal::from(0),
         k_last: 0,
         price_last_update_timestamp_s: clock.timestamp_ms() / 1000,
         coin_a_reserve: balance::zero<CoinA>(),
@@ -375,10 +421,20 @@ fun update<CoinA, CoinB>(self: &mut PairInner<CoinA, CoinB>, clock: &Clock) {
     let amount_reserve_b = balance::value(&self.coin_b_reserve);
 
     if (time_elapsed_s > 0) {
-        self.price_a_cumulative_last =
-            self.price_a_cumulative_last + (amount_reserve_b / amount_reserve_a as u128) * (time_elapsed_s as u128);
-        self.price_b_cumulative_last =
-            self.price_b_cumulative_last + (amount_reserve_a / amount_reserve_b as u128) * (time_elapsed_s as u128);
+        self.price_a_cumulative_last = add(
+            self.price_a_cumulative_last,
+            mul(
+                decimal::from(time_elapsed_s), 
+                div(decimal::from(amount_reserve_b), decimal::from(amount_reserve_a))
+            )
+        );
+        self.price_b_cumulative_last = add(
+            self.price_b_cumulative_last,
+            mul(
+                decimal::from(time_elapsed_s), 
+                div(decimal::from(amount_reserve_a), decimal::from(amount_reserve_b))
+            )
+        );
     };
 
     self.price_last_update_timestamp_s = current_time_s;
