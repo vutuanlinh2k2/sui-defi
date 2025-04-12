@@ -16,12 +16,10 @@ const MINIMUM_LIQUIDITY: u64 = 10; // Set the same as Cetus
 const EPackageVersionDisabled: u64 = 1;
 const EInsufficientAmountToQuote: u64 = 2;
 const EInsufficientLiquidity: u64 = 3;
-const EInsufficientAmountOfCoinB: u64 = 4;
-const EInsufficientAmountOfCoinA: u64 = 5;
-const EInsufficientAmountOfCoinsToProvide: u64 = 6;
-const EInsufficientLPCoinMinted: u64 = 7;
-const EInsufficientLPCoinBurned: u64 = 8;
-const EInsufficientWithdrawAmount: u64 = 9;
+const EMinimumAmountOfCoinsToProvideNotMet: u64 = 5; // can be split to 2 cases
+const EMinimumAmountOfCoinsToWithdrawNotMet: u64 = 6; // can be split to 2 cases
+const EInsufficientLPCoinAmountMinted: u64 = 7;
+const EInsufficientLPCoinAmountBurned: u64 = 8;
 const EInsufficientAmountIn: u64 = 10;
 const EInsufficientAmountOut: u64 = 11;
 const EInsufficientOutputAmount: u64 = 12;
@@ -219,7 +217,7 @@ public(package) fun add_liquidity_and_mint_lp_coin<CoinA, CoinB>(
     let reserve_amount_a = balance::value(&self.coin_a_reserve);
     let reserve_amount_b = balance::value(&self.coin_b_reserve);
 
-    let (amount_a, amount_b) = calculate_coin_amounts_to_provide(
+    let (amount_a, amount_b) = calculate_and_assert_amounts_to_provide(
         balance::value(&balance_a),
         balance::value(&balance_b),
         amount_a_min,
@@ -286,14 +284,14 @@ public(package) fun remove_liquidity_and_burn_lp_coin<CoinA, CoinB>(
     let reserve_amount_a = balance::value(&self.coin_a_reserve);
     let reserve_amount_b = balance::value(&self.coin_b_reserve);
 
-    let (withdraw_amount_a, withdraw_amount_b) = calculate_amount_to_withdraw(
+    let (withdraw_amount_a, withdraw_amount_b) = calculate_and_assert_amount_to_withdraw(
         amount_lp,
         reserve_amount_a,
         reserve_amount_b,
+        amount_a_min,
+        amount_b_min,
         amount_lp,
     );
-
-    assert!(withdraw_amount_a >= amount_a_min && withdraw_amount_b >= amount_b_min, EInsufficientWithdrawAmount);
 
     let fees_on = registry.fees_on();
     self.mint_fees(fees_on);
@@ -335,8 +333,12 @@ public(package) fun swap_exact_coins_for_coins<CoinIn, CoinOut>(
 
     if (is_coin_in_the_first_in_order) {
         let self = self.load_inner_mut<CoinIn, CoinOut>();
-        let amount_out = calculate_amount_out(amount_in, balance::value(&self.coin_a_reserve), balance::value(&self.coin_b_reserve));
-        assert!(amount_out >= min_amount_out, EInsufficientAmountOut);
+        let amount_out = calculate_and_assert_amount_out(
+            amount_in,
+            min_amount_out, 
+            balance::value(&self.coin_a_reserve), 
+            balance::value(&self.coin_b_reserve)
+        );
         balance::join(&mut self.coin_a_reserve, balance_in);
         let balance_out = balance::split(&mut self.coin_b_reserve, amount_out);
 
@@ -354,8 +356,12 @@ public(package) fun swap_exact_coins_for_coins<CoinIn, CoinOut>(
         balance_out
     } else {
         let self = self.load_inner_mut<CoinOut, CoinIn>();
-        let amount_out = calculate_amount_out(amount_in, balance::value(&self.coin_a_reserve), balance::value(&self.coin_b_reserve));
-        assert!(amount_out >= min_amount_out, EInsufficientAmountOut);
+        let amount_out = calculate_and_assert_amount_out(
+            amount_in,
+            min_amount_out, 
+            balance::value(&self.coin_b_reserve), 
+            balance::value(&self.coin_a_reserve)
+        );
         balance::join(&mut self.coin_b_reserve, balance_in);
         let balance_out = balance::split(&mut self.coin_a_reserve, amount_out);
 
@@ -382,14 +388,22 @@ public(package) fun swap_coins_for_exact_coins<CoinIn, CoinOut>(
 ): (Balance<CoinIn> , Balance<CoinOut>) {
     if (is_coin_in_the_first_in_order) {
         let self = self.load_inner_mut<CoinIn, CoinOut>();
-        let amount_in = calculate_amount_in(amount_out, balance::value(&self.coin_a_reserve), balance::value(&self.coin_b_reserve));
-        assert!(amount_in <= balance::value(&balance_in), EInsufficientInputAmount);
+        let amount_in = calculate_and_assert_amount_in(
+            amount_out, 
+            balance::value(&balance_in),
+            balance::value(&self.coin_a_reserve), 
+            balance::value(&self.coin_b_reserve)
+        );
         balance::join(&mut self.coin_a_reserve, balance::split( &mut balance_in, amount_in));
         (balance_in, balance::split(&mut self.coin_b_reserve, amount_out))
     } else {
         let self = self.load_inner_mut<CoinOut, CoinIn>();
-        let amount_in = calculate_amount_in(amount_out, balance::value(&self.coin_a_reserve), balance::value(&self.coin_b_reserve));
-        assert!(amount_in <= balance::value(&balance_in), EInsufficientInputAmount);
+        let amount_in = calculate_and_assert_amount_in(
+            amount_out, 
+            balance::value(&balance_in),
+            balance::value(&self.coin_b_reserve), 
+            balance::value(&self.coin_a_reserve)
+        );
         balance::join(&mut self.coin_b_reserve, balance::split(&mut balance_in, amount_in));
         (balance_in, balance::split(&mut self.coin_a_reserve, amount_out))
     }
@@ -469,7 +483,7 @@ fun update<CoinA, CoinB>(self: &mut PairInner<CoinA, CoinB>, clock: &Clock) {
 }
 
 // change to get reserve_amount 
-fun calculate_coin_amounts_to_provide(
+fun calculate_and_assert_amounts_to_provide(
     amount_a: u64,
     amount_b: u64,
     amount_a_min: u64,
@@ -477,25 +491,24 @@ fun calculate_coin_amounts_to_provide(
     reserve_a: u64,
     reserve_b: u64
 ): (u64, u64) {
-    assert!(amount_a > 0 && amount_b > 0, EInsufficientAmountOfCoinsToProvide);
+    assert!(amount_a > 0 && amount_b > 0, EMinimumAmountOfCoinsToProvideNotMet);
 
     if (reserve_a == 0 && reserve_b == 0) {
         (amount_a, amount_b)
     } else {
         let amount_b_optimal = quote(amount_a, reserve_a, reserve_b);
         if (amount_b_optimal > amount_b) {
-            assert!(amount_b_optimal >= amount_b_min, EInsufficientAmountOfCoinB);
+            assert!(amount_b_optimal >= amount_b_min, EMinimumAmountOfCoinsToProvideNotMet);
             (amount_a, amount_b_optimal)
         } else {
             let amount_a_optimal = quote(amount_b, reserve_b, reserve_a);
             assert!(amount_a_optimal < amount_a);
-            assert!(amount_a_optimal >= amount_a_min, EInsufficientAmountOfCoinA);
+            assert!(amount_a_optimal >= amount_a_min, EMinimumAmountOfCoinsToProvideNotMet);
             (amount_a_optimal, amount_b)
         }
     }
 }
 
-// return amount to lock
 fun calculate_lp_amount_to_mint_and_locked(
     amount_a: u64, 
     amount_b: u64, 
@@ -511,36 +524,54 @@ fun calculate_lp_amount_to_mint_and_locked(
             (((amount_b as u128) * (lp_supply as u128)) / (reserve_b as u128)  as u64),
         ), 0)
     };
-    assert!(mint_amount > 0, EInsufficientLPCoinMinted);
+    assert!(mint_amount > 0, EInsufficientLPCoinAmountMinted);
 
     (mint_amount, locked_amount)
 }
 
-fun calculate_amount_to_withdraw(amount_lp: u64, reserve_a: u64, reserve_b: u64, lp_supply: u64): (u64, u64) {
+fun calculate_and_assert_amount_to_withdraw(
+    amount_lp: u64, reserve_a: u64, 
+    reserve_b: u64, amount_a_min: u64, 
+    amount_b_min: u64, 
+    lp_supply: u64
+): (u64, u64) {
     let withdraw_amount_a = ((amount_lp as u128) * (reserve_a as u128) / (lp_supply as u128) as u64);
     let withdraw_amount_b = ((amount_lp as u128) * (reserve_b as u128) / (lp_supply as u128) as u64);
 
-    assert!(withdraw_amount_a > 0 && withdraw_amount_b > 0, EInsufficientLPCoinBurned);
+    assert!(withdraw_amount_a > 0 && withdraw_amount_b > 0, EInsufficientLPCoinAmountBurned);
+    assert!(withdraw_amount_a >= amount_a_min && withdraw_amount_b >= amount_b_min, EMinimumAmountOfCoinsToWithdrawNotMet);
 
     (withdraw_amount_a, withdraw_amount_b)
 }
 
-fun calculate_amount_out(amount_in: u64, amount_reserve_in: u64, amount_reserve_out: u64): u64 {
+fun calculate_and_assert_amount_out(
+    amount_in: u64, 
+    min_amount_out: u64, 
+    amount_reserve_in: u64, 
+    amount_reserve_out: u64
+): u64 {
     assert!(amount_in > 0, EInsufficientAmountIn);
     assert!(amount_reserve_in > 0 && amount_reserve_out > 0, EInsufficientLiquidity);
     let amount_in_with_fee = (amount_in as u128) * 997;
     let numerator = amount_in_with_fee * (amount_reserve_out as u128);
     let denominator = (amount_reserve_in as u128) * 1000 + amount_in_with_fee;
     let amount_out = (numerator / denominator as u64);
+    assert!(amount_out >= min_amount_out, EInsufficientAmountOut);
     amount_out
 }
 
-fun calculate_amount_in(amount_out: u64, amount_reserve_in: u64, amount_reserve_out: u64): u64 {
-    assert!(amount_out > 0, EInsufficientOutputAmount);
+fun calculate_and_assert_amount_in(
+    target_amount_out: u64,
+    amount_balance_in: u64,
+    amount_reserve_in: u64, 
+    amount_reserve_out: u64
+): u64 {
+    assert!(target_amount_out > 0, EInsufficientOutputAmount);
     assert!(amount_reserve_in > 0 && amount_reserve_out > 0, EInsufficientLiquidity);
-    let numerator = (amount_reserve_in as u128) * (amount_out as u128) * 1000;
-    let denominator = ((amount_reserve_out - amount_out) as u128) * 997;
+    let numerator = (amount_reserve_in as u128) * (target_amount_out as u128) * 1000;
+    let denominator = ((amount_reserve_out - target_amount_out) as u128) * 997;
     let amount_in = 1 + ((numerator / denominator) as u64);
+    assert!(amount_in <= amount_balance_in, EInsufficientInputAmount);
     amount_in
 }
 
