@@ -216,7 +216,7 @@ fun add_liquidity_and_mint_lp_coin_internal<CoinA, CoinB>(
 }
 
 fun assert_deadline(deadline_timestamp_ms: u64, clock: &Clock) {
-    assert!(deadline_timestamp_ms <= clock.timestamp_ms(), EDeadlinePassed);
+    assert!(deadline_timestamp_ms >= clock.timestamp_ms(), EDeadlinePassed);
 }
 
 fun send_coin_if_not_zero<CoinType>(

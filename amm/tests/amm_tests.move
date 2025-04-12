@@ -33,14 +33,15 @@ fun create_pair_successfully () {
     let pair_id = {
         let clock = test.take_shared<Clock>();
         let mut registry = test.take_shared_by_id<Registry>(registry_id);
-    
-        let id = create_pair<FSUI, USDT>(
+
+
+        let id = amm::create_pair_and_mint_lp_coin<FSUI, USDT> (
             &mut registry,
             test.take_from_sender<Coin<FSUI>>(),
             test.take_from_sender<Coin<USDT>>(),
             clock.timestamp_ms(),
             &clock,
-            &mut test
+            test.ctx()
         );
 
         return_shared(clock);
@@ -95,13 +96,13 @@ fun create_pair_failed_amount_zero () {
         let clock = test.take_shared<Clock>();
         let mut registry = test.take_shared_by_id<Registry>(registry_id);
     
-        create_pair<FSUI, USDT>(
+        amm::create_pair_and_mint_lp_coin<FSUI, USDT> (
             &mut registry,
             test.take_from_sender<Coin<FSUI>>(),
             test.take_from_sender<Coin<USDT>>(),
             clock.timestamp_ms(),
             &clock,
-            &mut test
+            test.ctx()
         );
 
         return_shared(clock);
@@ -111,23 +112,41 @@ fun create_pair_failed_amount_zero () {
     test.end();
 }
 
-#[test_only]
-fun create_pair<CoinA, CoinB> (
-    registry: &mut Registry,
-    coin_a: Coin<CoinA>,
-    coin_b: Coin<CoinB>,
-    deadline_timestamp_ms: u64,
-    clock: &Clock,
-    test: &mut Scenario
-): ID {
-    amm::create_pair_and_mint_lp_coin<CoinA, CoinB> (
-        registry,
-        coin_a,
-        coin_b,
-        deadline_timestamp_ms,
-        clock,
-        test.ctx()
-    )
+#[test]
+#[expected_failure(abort_code = amm::EDeadlinePassed)]
+fun create_pair_failed_deadline_passed () {
+    let mut test = begin(OWNER);
+    let registry_id = setup_test(OWNER, &mut test);
+    let fsui_amount  = 10_000_000_000;
+    let usdt_amount = 40_000_000_000;
+
+    test.next_tx(OWNER);
+    {
+        deposit_coin_to_address<FSUI>(fsui_amount, ALICE, &mut test);
+        deposit_coin_to_address<USDT>(usdt_amount, ALICE, &mut test);
+    };
+
+    test.next_tx(ALICE);
+    {
+        let mut clock = test.take_shared<Clock>();
+        let mut registry = test.take_shared_by_id<Registry>(registry_id);
+
+        clock.set_for_testing(1);
+    
+        amm::create_pair_and_mint_lp_coin<FSUI, USDT> (
+            &mut registry,
+            test.take_from_sender<Coin<FSUI>>(),
+            test.take_from_sender<Coin<USDT>>(),
+            clock.timestamp_ms() - 1,
+            &clock,
+            test.ctx()
+        );
+
+        return_shared(clock);
+        return_shared(registry);
+    };
+
+    test.end();
 }
 
 #[test_only]
