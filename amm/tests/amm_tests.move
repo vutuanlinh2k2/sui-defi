@@ -4,56 +4,29 @@ module amm::amm_tests;
 use amm::amm;
 use amm::constants::{current_version};
 use amm::decimal::{Self, eq};
-use amm::pair::{Pair, LPCoin, minimum_liquidity};
+use amm::pair::{Self, Pair, LPCoin, minimum_liquidity};
 use amm::registry::{Self, Registry};
 use sui::clock::{Self, Clock};
 use sui::coin::{Self, Coin};
-use sui::test_scenario::{Scenario, begin, end, return_shared};
+use sui::test_scenario::{Scenario, begin, end, return_shared, return_to_sender};
 
 const OWNER: address = @0x1;
 const ALICE: address = @0xAAAA;
-const BOB: address = @0xBBBB;
 
 public struct FSUI has store {}
 public struct USDT has store {}
-
-/* 
-Plan all the tests 
-
-create pair (use this inside in others too)
-- create function for this
-- fail
-    - Cases 1 ...
-    - Cases 2 ... 
-
-add liquidity 
-- create function for this (after create pair)
-- fail cases
-
-remove liquidity 
-- create function for this (after create pair)
-- fail cases
-
-swap exact coins for coins
-- fail cases
-
-swap coins for exact coins
-- fail cases
-
-UTILITIES
-- create registry
-- create new tokens
- */
 
 #[test]
 fun create_pair_successfully () {
     let mut test = begin(OWNER);
     let registry_id = setup_test(OWNER, &mut test);
+    let fsui_amount  = 10_000_000_000;
+    let usdt_amount = 40_000_000_000;
 
     test.next_tx(OWNER);
     {
-        deposit_coin_to_address<FSUI>(10_000_000_000, ALICE, &mut test);
-        deposit_coin_to_address<USDT>(40_000_000_000, ALICE, &mut test);
+        deposit_coin_to_address<FSUI>(fsui_amount, ALICE, &mut test);
+        deposit_coin_to_address<USDT>(usdt_amount, ALICE, &mut test);
     };
 
     test.next_tx(ALICE);
@@ -85,15 +58,54 @@ fun create_pair_successfully () {
         let (price_a_cumulative_last, price_b_cumulative_last) = pair.price_cumulative_last<FSUI, USDT>();
         assert!(eq(price_a_cumulative_last, decimal::from(0)));
         assert!(eq(price_b_cumulative_last, decimal::from(0)));
-        assert!(pair.k_last<FSUI, USDT>() == 10_000_000_000 * 40_000_000_000);
+        assert!(pair.k_last<FSUI, USDT>() == (fsui_amount as u128) * (usdt_amount as u128));
         let (reserve_a_amount, reserve_b_amount) = pair.reserves_amount<FSUI, USDT>();
-        assert!(reserve_a_amount == 10_000_000_000);
-        assert!(reserve_b_amount == 40_000_000_000);
+        assert!(reserve_a_amount == fsui_amount);
+        assert!(reserve_b_amount == usdt_amount);
         assert!(pair.fees_amount<FSUI, USDT>() == 0);
         assert!(pair.lp_locked_amount<FSUI, USDT>() == minimum_liquidity());
-        assert!(pair.lp_coin_supply_amount<FSUI, USDT>() == 20_000_000_000);
+        let lp_supply = pair.lp_coin_supply_amount<FSUI, USDT>();
+        assert!(lp_supply == (std::u128::sqrt((fsui_amount as u128) * (usdt_amount as u128))) as u64);
+        let lp_coin = test.take_from_address<Coin<LPCoin<FSUI, USDT>>>(ALICE);
+        assert!(coin::value(&lp_coin) == lp_supply - minimum_liquidity());
 
         return_shared(pair);
+        test.return_to_sender(lp_coin);
+    };
+
+    test.end();
+}
+
+#[test]
+#[expected_failure(abort_code = pair::EInsufficientAmountOfCoinsToProvide)]
+fun create_pair_failed_amount_zero () {
+    let mut test = begin(OWNER);
+    let registry_id = setup_test(OWNER, &mut test);
+    let fsui_amount  = 0;
+    let usdt_amount = 0;
+
+    test.next_tx(OWNER);
+    {
+        deposit_coin_to_address<FSUI>(fsui_amount, ALICE, &mut test);
+        deposit_coin_to_address<USDT>(usdt_amount, ALICE, &mut test);
+    };
+
+    test.next_tx(ALICE);
+    {
+        let clock = test.take_shared<Clock>();
+        let mut registry = test.take_shared_by_id<Registry>(registry_id);
+    
+        create_pair<FSUI, USDT>(
+            &mut registry,
+            test.take_from_sender<Coin<FSUI>>(),
+            test.take_from_sender<Coin<USDT>>(),
+            clock.timestamp_ms(),
+            &clock,
+            &mut test
+        );
+
+        return_shared(clock);
+        return_shared(registry);
     };
 
     test.end();

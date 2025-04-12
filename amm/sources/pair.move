@@ -14,11 +14,11 @@ const MINIMUM_LIQUIDITY: u64 = 10; // Set the same as Cetus
 
 // === Errors ===
 const EPackageVersionDisabled: u64 = 1;
-const EInsufficientAmount: u64 = 2;
+const EInsufficientAmountToQuote: u64 = 2;
 const EInsufficientLiquidity: u64 = 3;
 const EInsufficientAmountOfCoinB: u64 = 4;
 const EInsufficientAmountOfCoinA: u64 = 5;
-const EInsufficientAmountOfCoins: u64 = 6;
+const EInsufficientAmountOfCoinsToProvide: u64 = 6;
 const EInsufficientLPCoinMinted: u64 = 7;
 const EInsufficientLPCoinBurned: u64 = 8;
 const EInsufficientWithdrawAmount: u64 = 9;
@@ -178,7 +178,7 @@ public(package) fun create_pair_and_mint_lp_coin<CoinA, CoinB>(
         }
     );
 
-    let (balance_a_value, balance_b_value) = (
+    let (balance_a_amount, balance_b_amount) = (
         balance::value(&balance_a),
         balance::value(&balance_b),
     );
@@ -188,8 +188,8 @@ public(package) fun create_pair_and_mint_lp_coin<CoinA, CoinB>(
         registry,
         balance_a,
         balance_b,
-        balance_a_value,
-        balance_b_value,
+        balance_a_amount,
+        balance_b_amount,
         clock,
         ctx,
     );
@@ -235,7 +235,7 @@ public(package) fun add_liquidity_and_mint_lp_coin<CoinA, CoinB>(
         balance::supply_value(&self.lp_coin_supply)
     );
 
-    if (amount_lp_locked != 0) { // locked MINIMUM_LIQUIDITY when the pair is created
+    if (amount_lp_locked > 0) { // locked MINIMUM_LIQUIDITY when the pair is created
         balance::join(
             &mut self.lp_locked,
             balance::increase_supply(&mut self.lp_coin_supply, amount_lp_locked),
@@ -477,7 +477,7 @@ fun calculate_coin_amounts_to_provide(
     reserve_a: u64,
     reserve_b: u64
 ): (u64, u64) {
-    assert!(amount_a > 0 && amount_b > 0, EInsufficientAmountOfCoins);
+    assert!(amount_a > 0 && amount_b > 0, EInsufficientAmountOfCoinsToProvide);
 
     if (reserve_a == 0 && reserve_b == 0) {
         (amount_a, amount_b)
@@ -547,7 +547,7 @@ fun calculate_amount_in(amount_out: u64, amount_reserve_in: u64, amount_reserve_
 /// Given an amount of an asset and pair reserves,
 /// returns an equivalent amount of the other asset.
 fun quote(amount_a: u64, amount_reserve_a: u64, amount_reserve_b: u64): u64 {
-    assert!(amount_a > 0, EInsufficientAmount);
+    assert!(amount_a > 0, EInsufficientAmountToQuote);
     assert!(amount_reserve_a > 0 && amount_reserve_b > 0, EInsufficientLiquidity);
     (((amount_a as u128) * (amount_reserve_b as u128)) / (amount_reserve_a as u128)  as u64)
 }
