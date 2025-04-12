@@ -6,6 +6,7 @@ use amm::constants::{current_version};
 use amm::decimal::{Self, eq};
 use amm::pair::{Self, Pair, LPCoin, minimum_liquidity};
 use amm::registry::{Self, Registry};
+use amm::utils::{Self};
 use sui::clock::{Self, Clock};
 use sui::coin::{Self, Coin};
 use sui::test_scenario::{Scenario, begin, end, return_shared, return_to_sender};
@@ -16,6 +17,11 @@ const ALICE: address = @0xAAAA;
 public struct FSUI has store {}
 public struct USDT has store {}
 
+// === TEST FUNCTIONS ===
+
+// TODO: A test everything function? 
+
+// CREATE PAIR
 #[test]
 fun create_pair_successfully () {
     let mut test = begin(OWNER);
@@ -78,7 +84,7 @@ fun create_pair_successfully () {
 }
 
 #[test]
-#[expected_failure(abort_code = pair::EInsufficientAmountOfCoinsToProvide)]
+#[expected_failure(abort_code = pair::EMinimumAmountOfCoinsToProvideNotMet)]
 fun create_pair_failed_amount_zero () {
     let mut test = begin(OWNER);
     let registry_id = setup_test(OWNER, &mut test);
@@ -148,6 +154,115 @@ fun create_pair_failed_deadline_passed () {
 
     test.end();
 }
+
+#[test]
+#[expected_failure(abort_code = utils::EIdenticalCoins)]
+fun create_pair_failed_identical_coins () {
+    let mut test = begin(OWNER);
+    let registry_id = setup_test(OWNER, &mut test);
+    let usdt_amount = 10_000_000_000;
+
+    test.next_tx(OWNER);
+    {
+        deposit_coin_to_address<USDT>(usdt_amount, ALICE, &mut test);
+        deposit_coin_to_address<USDT>(usdt_amount, ALICE, &mut test);
+    };
+
+    test.next_tx(ALICE);
+    {
+        let clock = test.take_shared<Clock>();
+        let mut registry = test.take_shared_by_id<Registry>(registry_id);
+    
+        amm::create_pair_and_mint_lp_coin<USDT, USDT> (
+            &mut registry,
+            test.take_from_sender<Coin<USDT>>(),
+            test.take_from_sender<Coin<USDT>>(),
+            clock.timestamp_ms(),
+            &clock,
+            test.ctx()
+        );
+
+        return_shared(clock);
+        return_shared(registry);
+    };
+
+    test.end();
+}
+
+// ADD LIQUIDITY
+// fun add_liquidity_and_mint_lp_coin<CoinA, CoinB>(
+//     registry: &Registry,
+//     pair: &mut Pair,
+//     coin_a: Coin<CoinA>,
+//     coin_b: Coin<CoinB>,
+//     amount_a_min: u64,
+//     amount_b_min: u64,
+//     deadline_timestamp_ms: u64,
+//     clock: &Clock,
+//     ctx: &mut TxContext,  
+// )
+/* 
+    pass
+    deadline pass
+    identical coins
+    amount_0
+    wrong version
+    amount too little (mint amount = 0)
+    amount a or b min not met
+    fees_on vs fees_off (because this update k_last)
+    reserve_amount = 0
+ */
+
+// REMOVE LIQUIDITY
+// fun remove_liquidity_and_burn_lp_coin<CoinA, CoinB>(
+//     registry: &Registry,
+//     pair: &mut Pair,
+//     coin_lp: Coin<LPCoin<CoinA, CoinB>>,
+//     amount_a_min: u64,
+//     amount_b_min: u64,
+//     deadline_timestamp_ms: u64,
+//     clock: &Clock,
+//     ctx: &mut TxContext,
+// )
+/* 
+    pass
+    deadline_pass
+    identical coins
+    amount_0
+    wrong version
+    wrong lp token
+    too little amount to withdraw (burn amount = 0)
+    amount a or b min not met
+    fees_on vs fees_off
+    reserve_amount = 0
+ */
+
+// SWAP EXACT COINS FOR COINS
+/* 
+    pass
+    deadline_pass
+    wrong version
+    wrong coins to swap 
+    min amount not met
+    right order vs wrong order
+    amount = 0
+    reserve_amount = 0
+ */
+
+// SWAP COINS FOR EXACT COINS
+/* 
+    pass
+    deadline_pass
+    wrong version
+    wrong coins to swap 
+    min amount not met
+    right order vs wrong order
+    amount = 0
+    reserve_amount = 0
+ */
+
+
+// === TEST-ONLY FUNCTIONS ===
 
 #[test_only]
 fun setup_test(owner: address, test: &mut Scenario): ID {

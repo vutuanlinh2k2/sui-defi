@@ -10,20 +10,21 @@ use sui::event;
 use sui::vec_set::VecSet;
 use sui::versioned::{Self, Versioned};
 
-const MINIMUM_LIQUIDITY: u64 = 10; // Set the same as Cetus
-
 // === Errors ===
 const EPackageVersionDisabled: u64 = 1;
 const EInsufficientAmountToQuote: u64 = 2;
 const EInsufficientLiquidity: u64 = 3;
-const EMinimumAmountOfCoinsToProvideNotMet: u64 = 5; // can be split to 2 cases
-const EMinimumAmountOfCoinsToWithdrawNotMet: u64 = 6; // can be split to 2 cases
-const EInsufficientLPCoinAmountMinted: u64 = 7;
-const EInsufficientLPCoinAmountBurned: u64 = 8;
-const EInsufficientAmountIn: u64 = 10;
-const EInsufficientAmountOut: u64 = 11;
-const EInsufficientOutputAmount: u64 = 12;
-const EInsufficientInputAmount: u64 = 13;
+const EMinimumAmountOfCoinsToProvideNotMet: u64 = 4; // can be split to 2 cases
+const EMinimumAmountOfCoinsToWithdrawNotMet: u64 = 5; // can be split to 2 cases
+const EInsufficientLPCoinAmountMinted: u64 = 6;
+const EInsufficientLPCoinAmountBurned: u64 = 7;
+const EInsufficientAmountIn: u64 = 8;
+const EInsufficientAmountOut: u64 = 9;
+const EInsufficientOutputAmount: u64 = 10;
+const EInsufficientInputAmount: u64 = 11;
+
+// === Constants ===
+const MINIMUM_LIQUIDITY: u64 = 10;
 
 // === Structs ===
 public struct Pair has key {
@@ -225,7 +226,7 @@ public(package) fun add_liquidity_and_mint_lp_coin<CoinA, CoinB>(
         reserve_amount_a,
         reserve_amount_b,
     );
-    let (amount_lp_mint, amount_lp_locked) = calculate_lp_amount_to_mint_and_locked( 
+    let (amount_lp_mint, amount_lp_locked) = calculate_and_assert_lp_amount_to_mint_and_locked( 
         amount_a, 
         amount_b,
         reserve_amount_a,
@@ -491,17 +492,15 @@ fun calculate_and_assert_amounts_to_provide(
     reserve_a: u64,
     reserve_b: u64
 ): (u64, u64) {
-    assert!(amount_a > 0 && amount_b > 0, EMinimumAmountOfCoinsToProvideNotMet);
-
     if (reserve_a == 0 && reserve_b == 0) {
         (amount_a, amount_b)
     } else {
-        let amount_b_optimal = quote(amount_a, reserve_a, reserve_b);
+        let amount_b_optimal = quote_with_assert(amount_a, reserve_a, reserve_b);
         if (amount_b_optimal > amount_b) {
             assert!(amount_b_optimal >= amount_b_min, EMinimumAmountOfCoinsToProvideNotMet);
             (amount_a, amount_b_optimal)
         } else {
-            let amount_a_optimal = quote(amount_b, reserve_b, reserve_a);
+            let amount_a_optimal = quote_with_assert(amount_b, reserve_b, reserve_a);
             assert!(amount_a_optimal < amount_a);
             assert!(amount_a_optimal >= amount_a_min, EMinimumAmountOfCoinsToProvideNotMet);
             (amount_a_optimal, amount_b)
@@ -509,7 +508,7 @@ fun calculate_and_assert_amounts_to_provide(
     }
 }
 
-fun calculate_lp_amount_to_mint_and_locked(
+fun calculate_and_assert_lp_amount_to_mint_and_locked(
     amount_a: u64, 
     amount_b: u64, 
     reserve_a: u64,
@@ -577,7 +576,7 @@ fun calculate_and_assert_amount_in(
 
 /// Given an amount of an asset and pair reserves,
 /// returns an equivalent amount of the other asset.
-fun quote(amount_a: u64, amount_reserve_a: u64, amount_reserve_b: u64): u64 {
+fun quote_with_assert(amount_a: u64, amount_reserve_a: u64, amount_reserve_b: u64): u64 {
     assert!(amount_a > 0, EInsufficientAmountToQuote);
     assert!(amount_reserve_a > 0 && amount_reserve_b > 0, EInsufficientLiquidity);
     (((amount_a as u128) * (amount_reserve_b as u128)) / (amount_reserve_a as u128)  as u64)

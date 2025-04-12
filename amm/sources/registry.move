@@ -1,7 +1,7 @@
 module amm::registry;
 
 use amm::constants;
-use amm::utils::assert_identical_and_check_coins_order;
+use amm::utils::{assert_identical_and_check_coins_order};
 use std::type_name::{Self, TypeName};
 use sui::table::{Self, Table};
 use sui::vec_set::{Self, VecSet};
@@ -125,7 +125,7 @@ public(package) fun pair_exists<CoinA, CoinB>(self: &Registry): bool {
     self.pairs.contains(key)
 }
 
-public (package) fun allowed_versions(self: &Registry): VecSet<u64> {
+public(package) fun allowed_versions(self: &Registry): VecSet<u64> {
     let self = self.load_inner();
     self.allowed_versions
 }
@@ -142,7 +142,6 @@ public(package) fun fees_on(self:&Registry): bool {
 
 // === Private Functions ===
 
-// TODO: consider move to AMM
 fun get_pair_key<CoinA, CoinB>(): PairKey {
     let coins_in_order = assert_identical_and_check_coins_order<CoinA, CoinB>();
 

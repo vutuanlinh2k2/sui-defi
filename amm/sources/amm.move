@@ -2,14 +2,13 @@ module amm::amm;
 
 use amm::pair::{Self, Pair, LPCoin};
 use amm::registry::{Registry, AmmAdminCap};
-use amm::utils::assert_identical_and_check_coins_order;
+use amm::utils::{assert_identical_and_check_coins_order};
 use sui::balance::{Self, Balance};
 use sui::clock::Clock;
 use sui::coin::{Self, Coin};
 
 // === Errors ===
-const EPairAlreadyExists: u64 = 1;
-const EDeadlinePassed: u64 = 2;
+const EDeadlinePassed: u64 = 1;
 
 // === Public Mutative Functions ===
 
@@ -22,8 +21,6 @@ public fun create_pair_and_mint_lp_coin<CoinA, CoinB>(
     ctx: &mut TxContext,
 ): ID {
     assert_deadline(deadline_timestamp_ms, clock);
-
-    assert!(!registry.pair_exists<CoinA, CoinB>(), EPairAlreadyExists);
 
     let coins_in_order = assert_identical_and_check_coins_order<CoinA, CoinB>();
 
