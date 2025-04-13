@@ -55,3 +55,7 @@ public(package) fun le(a: Decimal, b: Decimal): bool {
 public(package) fun lt(a: Decimal, b: Decimal): bool {
     a.value < b.value
 }
+
+public(package) fun to_scaled_val(v: Decimal): u256 {
+    v.value
+}

@@ -14,14 +14,15 @@ use sui::versioned::{Self, Versioned};
 const EPackageVersionDisabled: u64 = 1;
 const EInsufficientAmountToQuote: u64 = 2;
 const EInsufficientLiquidity: u64 = 3;
-const EMinimumAmountOfCoinsToProvideNotMet: u64 = 4; // can be split to 2 cases
-const EMinimumAmountOfCoinsToWithdrawNotMet: u64 = 5; // can be split to 2 cases
+const EMinimumAmountOfCoinsToProvideNotMet: u64 = 4;
+const EMinimumAmountOfCoinsToWithdrawNotMet: u64 = 5;
 const EInsufficientLPCoinAmountMinted: u64 = 6;
 const EInsufficientLPCoinAmountBurned: u64 = 7;
 const EInsufficientAmountIn: u64 = 8;
 const EInsufficientAmountOut: u64 = 9;
 const EInsufficientOutputAmount: u64 = 10;
 const EInsufficientInputAmount: u64 = 11;
+const EInsufficientProvidedAmount: u64 = 12;
 
 // === Constants ===
 const MINIMUM_LIQUIDITY: u64 = 10;
@@ -284,6 +285,7 @@ public(package) fun remove_liquidity_and_burn_lp_coin<CoinA, CoinB>(
     let amount_lp= balance::value(&lp_balance);
     let reserve_amount_a = balance::value(&self.coin_a_reserve);
     let reserve_amount_b = balance::value(&self.coin_b_reserve);
+    let lp_supply = balance::supply_value(&self.lp_coin_supply);
 
     let (withdraw_amount_a, withdraw_amount_b) = calculate_and_assert_amount_to_withdraw(
         amount_lp,
@@ -291,7 +293,7 @@ public(package) fun remove_liquidity_and_burn_lp_coin<CoinA, CoinB>(
         reserve_amount_b,
         amount_a_min,
         amount_b_min,
-        amount_lp,
+        lp_supply,
     );
 
     let fees_on = registry.fees_on();
@@ -456,19 +458,19 @@ fun update<CoinA, CoinB>(self: &mut PairInner<CoinA, CoinB>, clock: &Clock) {
     let amount_reserve_a = balance::value(&self.coin_a_reserve);
     let amount_reserve_b = balance::value(&self.coin_b_reserve);
 
-    if (time_elapsed_s > 0) {
+    if (time_elapsed_s > 0 && amount_reserve_a > 0 && amount_reserve_b > 0) {
         self.price_a_cumulative_last = add(
             self.price_a_cumulative_last,
-            mul(
-                decimal::from(time_elapsed_s), 
-                div(decimal::from(amount_reserve_b), decimal::from(amount_reserve_a))
+            div(
+                mul(decimal::from(time_elapsed_s), decimal::from(amount_reserve_b)),
+                decimal::from(amount_reserve_a)
             )
         );
         self.price_b_cumulative_last = add(
             self.price_b_cumulative_last,
-            mul(
-                decimal::from(time_elapsed_s), 
-                div(decimal::from(amount_reserve_a), decimal::from(amount_reserve_b))
+            div(
+                mul(decimal::from(time_elapsed_s), decimal::from(amount_reserve_a)),
+                decimal::from(amount_reserve_b)
             )
         );
     };
@@ -492,16 +494,17 @@ fun calculate_and_assert_amounts_to_provide(
     reserve_a: u64,
     reserve_b: u64
 ): (u64, u64) {
+    assert!(amount_a > 0 && amount_b > 0, EInsufficientProvidedAmount);
     if (reserve_a == 0 && reserve_b == 0) {
         (amount_a, amount_b)
     } else {
         let amount_b_optimal = quote_with_assert(amount_a, reserve_a, reserve_b);
-        if (amount_b_optimal > amount_b) {
+        if (amount_b_optimal <= amount_b) {
             assert!(amount_b_optimal >= amount_b_min, EMinimumAmountOfCoinsToProvideNotMet);
             (amount_a, amount_b_optimal)
         } else {
             let amount_a_optimal = quote_with_assert(amount_b, reserve_b, reserve_a);
-            assert!(amount_a_optimal < amount_a);
+            assert!(amount_a_optimal <= amount_a);
             assert!(amount_a_optimal >= amount_a_min, EMinimumAmountOfCoinsToProvideNotMet);
             (amount_a_optimal, amount_b)
         }
@@ -516,7 +519,9 @@ fun calculate_and_assert_lp_amount_to_mint_and_locked(
     lp_supply: u64
 ): (u64, u64) {
     let (mint_amount, locked_amount) = if (lp_supply == 0) {
-        ((std::u128::sqrt((amount_a as u128) * (amount_b as u128)) as u64) - MINIMUM_LIQUIDITY, MINIMUM_LIQUIDITY)
+        let root = std::u128::sqrt((amount_a as u128) * (amount_b as u128)) as u64;
+        assert!(root > MINIMUM_LIQUIDITY, EInsufficientProvidedAmount);
+        (root - MINIMUM_LIQUIDITY, MINIMUM_LIQUIDITY)
     } else {
         (std::u64::min(
             (((amount_a as u128) * (lp_supply as u128)) / (reserve_a as u128)  as u64),
@@ -534,6 +539,7 @@ fun calculate_and_assert_amount_to_withdraw(
     amount_b_min: u64, 
     lp_supply: u64
 ): (u64, u64) {
+    assert!(amount_lp > 0, EInsufficientLPCoinAmountBurned);
     let withdraw_amount_a = ((amount_lp as u128) * (reserve_a as u128) / (lp_supply as u128) as u64);
     let withdraw_amount_b = ((amount_lp as u128) * (reserve_b as u128) / (lp_supply as u128) as u64);
 
@@ -582,7 +588,7 @@ fun quote_with_assert(amount_a: u64, amount_reserve_a: u64, amount_reserve_b: u6
     (((amount_a as u128) * (amount_reserve_b as u128)) / (amount_reserve_a as u128)  as u64)
 }
 
-fun load_inner<CoinA, CoinB>(self: &Pair): &PairInner<CoinA, CoinB> {
+public(package) fun load_inner<CoinA, CoinB>(self: &Pair): &PairInner<CoinA, CoinB> {
     let inner: &PairInner<CoinA, CoinB> = self.inner.load_value();
     let package_version = constants::current_version();
     assert!(inner.allowed_versions.contains(&package_version), EPackageVersionDisabled);

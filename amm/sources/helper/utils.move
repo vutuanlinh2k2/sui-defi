@@ -4,7 +4,7 @@ use std::type_name;
 
 const EIdenticalCoins: u64 = 1;
 
-public enum CoinsOrdering has store {
+public enum CoinsOrdering {
     Less,
     Equal,
     Greater,
