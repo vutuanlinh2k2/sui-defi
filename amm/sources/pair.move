@@ -94,17 +94,17 @@ public fun allowed_versions<CoinA, CoinB>(self: &Pair): VecSet<u64> {
     self.allowed_versions
 }
 
-public fun price_last_update_timestamp_s<CoinA, CoinB>(self: &Pair): u64 {
+public fun price_last_update_timestamp_s<CoinA, CoinB>(self: &Pair): u64 { // TODO: public(package) only
     let self = self.load_inner<CoinA, CoinB>();
     self.price_last_update_timestamp_s
 }
 
-public fun price_cumulative_last<CoinA, CoinB>(self: &Pair): (Decimal, Decimal) {
+public fun price_cumulative_last<CoinA, CoinB>(self: &Pair): (Decimal, Decimal) { // TODO: public(package) only
     let self = self.load_inner<CoinA, CoinB>();
     (self.price_a_cumulative_last, self.price_b_cumulative_last)
 }
 
-public fun k_last<CoinA, CoinB>(self: &Pair): u128 {
+public fun k_last<CoinA, CoinB>(self: &Pair): u128 { // TODO: public(package) only
     let self = self.load_inner<CoinA, CoinB>();
     self.k_last
 }
@@ -422,17 +422,18 @@ public(package) fun fees_mut<CoinA, CoinB>(self: &mut Pair): &mut Balance<LPCoin
 fun mint_fees<CoinA, CoinB>(
     self: &mut PairInner<CoinA, CoinB>,
     fees_on: bool
-): bool {
+) {
     let k_last = self.k_last;
 
-    if (fees_on) { if (k_last != 0) {
+    if (fees_on) { 
+        if (k_last != 0) {
             let amount_reserve_a = balance::value(&self.coin_a_reserve);
             let amount_reserve_b = balance::value(&self.coin_b_reserve);
-            let lp_coin_supply = balance::supply_value(&self.lp_coin_supply);
             let root_k =
                 (std::u128::sqrt((amount_reserve_a as u128) * (amount_reserve_b as u128))) as u64;
             let root_k_last = std::u128::sqrt(k_last) as u64;
             if (root_k > root_k_last) {
+                let lp_coin_supply = balance::supply_value(&self.lp_coin_supply);
                 let numerator = (lp_coin_supply as u128) * ((root_k - root_k_last) as u128);
                 let denominator = (root_k as u128) * 5 + (root_k_last as u128);
                 let fees_amount = (numerator / denominator) as u64;
@@ -443,11 +444,10 @@ fun mint_fees<CoinA, CoinB>(
                     );
                 }
             }
-        } else {
-            self.k_last = 0;
-        } };
-
-    fees_on
+        }
+    } else if (k_last != 0) {
+        self.k_last = 0;
+    }
 }
 
 /// Update price cumulative and last update timestamp
@@ -534,9 +534,11 @@ fun calculate_and_assert_lp_amount_to_mint_and_locked(
 }
 
 fun calculate_and_assert_amount_to_withdraw(
-    amount_lp: u64, reserve_a: u64, 
-    reserve_b: u64, amount_a_min: u64, 
-    amount_b_min: u64, 
+    amount_lp: u64, 
+    reserve_a: u64, 
+    reserve_b: u64, 
+    amount_a_min: u64, 
+    amount_b_min: u64,
     lp_supply: u64
 ): (u64, u64) {
     assert!(amount_lp > 0, EInsufficientLPCoinAmountBurned);
@@ -545,6 +547,7 @@ fun calculate_and_assert_amount_to_withdraw(
 
     assert!(withdraw_amount_a > 0 && withdraw_amount_b > 0, EInsufficientLPCoinAmountBurned);
     assert!(withdraw_amount_a >= amount_a_min && withdraw_amount_b >= amount_b_min, EMinimumAmountOfCoinsToWithdrawNotMet);
+    assert!(withdraw_amount_a < reserve_a && withdraw_amount_b < reserve_b, EInsufficientLiquidity);
 
     (withdraw_amount_a, withdraw_amount_b)
 }

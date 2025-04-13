@@ -147,6 +147,9 @@ fun create_pair_failed_identical_coins () {
     test.end();
 }
 
+// #[test]
+// fun create_pair_failed_already_exists
+
 // ADD LIQUIDITY
 #[test]
 fun add_liquidity_successfully() {
@@ -212,15 +215,15 @@ fun add_liquidity_successfully() {
 
         // Check user's coin balances
         let sui_coin = test.take_from_address<Coin<SUI>>(BOB);
-        let usdt_coin = test.take_from_address<Coin<USDC>>(BOB);
+        let usdc_coin = test.take_from_address<Coin<USDC>>(BOB);
         let lp_coin = test.take_from_address<Coin<LPCoin<SUI, USDC>>>(BOB);
         assert!(coin::value(&sui_coin) == 9_000_000_000); // provide 1 SUI, got 9 (10-1) left
-        assert!(coin::value(&usdt_coin) == 1_000_000_000); // provide 4 USDC, got 1 (5-1) left
+        assert!(coin::value(&usdc_coin) == 1_000_000_000); // provide 4 USDC, got 1 (5-1) left
         assert!(coin::value(&lp_coin) == 2_000_000_000);
 
         return_shared(pair);
         test.return_to_sender(sui_coin);
-        test.return_to_sender(usdt_coin);
+        test.return_to_sender(usdc_coin);
         test.return_to_sender(lp_coin);
     };
 
@@ -383,15 +386,15 @@ fun remove_liquidity_successfully() {
 
         // Check user's coin balances
         let sui_coin = test.take_from_address<Coin<SUI>>(ALICE);
-        let usdt_coin = test.take_from_address<Coin<USDC>>(ALICE);
+        let usdc_coin = test.take_from_address<Coin<USDC>>(ALICE);
         let lp_coin = test.take_from_address<Coin<LPCoin<SUI, USDC>>>(ALICE);
         assert!(coin::value(&sui_coin) == 500_000_000); // provide 1 SUI, got 9 (10-1) left
-        assert!(coin::value(&usdt_coin) == 2_000_000_000); // provide 4 USDC, got 1 (5-1) left
+        assert!(coin::value(&usdc_coin) == 2_000_000_000); // provide 4 USDC, got 1 (5-1) left
         assert!(coin::value(&lp_coin) == 18_999_999_990); // 20_000_000_000 - locked value - 1_000_000_000
 
         return_shared(pair);
         test.return_to_sender(sui_coin);
-        test.return_to_sender(usdt_coin);
+        test.return_to_sender(usdc_coin);
         test.return_to_sender(lp_coin);
     };
 
@@ -492,6 +495,7 @@ fun remove_liquidity_failed_minimum_not_met() {
 
 // SWAP EXACT COINS FOR COINS
 
+#[test]
 fun swap_exact_coins_for_coins_successfully() {
     let mut test = begin(OWNER);
     let registry_id = setup_test(OWNER, &mut test);
@@ -504,38 +508,152 @@ fun swap_exact_coins_for_coins_successfully() {
 
     test.next_tx(BOB);
     {
-        deposit_coin_to_address<SUI>(1_000_000_000, BOB, &mut test);
+        deposit_coin_to_address<SUI>(10_000_000_000, BOB, &mut test);
+    };
+
+    test.next_tx(BOB);
+    {
+        let mut clock = test.take_shared<Clock>();
+        let mut pair = test.take_shared_by_id<Pair>(pair_id);
+        let mut sui_coin = test.take_from_sender<Coin<SUI>>();
+        
+        clock.set_for_testing(10_000);
+
+        amm::swap_exact_coins_for_coins<SUI, USDC>(
+            &mut pair,
+            coin::split(&mut sui_coin, 1_000_000_000, test.ctx()),
+            0,
+            clock.timestamp_ms(),
+            &clock,
+            test.ctx()
+        );
+
+        return_shared(clock);
+        return_shared(pair);
+        test.return_to_sender(sui_coin);
+    };
+
+    test.next_tx(BOB);
+    {
+        let pair = test.take_shared_by_id<Pair>(pair_id);
+
+        assert!(pair.allowed_versions<SUI, USDC>().contains(&current_version()));
+        assert!(pair.price_last_update_timestamp_s<SUI, USDC>() == 0);
+        let (price_a_cumulative_last, price_b_cumulative_last) = pair.price_cumulative_last<SUI, USDC>();
+        assert!(price_a_cumulative_last.to_scaled_val() == 0);
+        assert!(price_b_cumulative_last.to_scaled_val() == 0);
+        let (reserve_a_amount, reserve_b_amount) = pair.reserves_amount<SUI, USDC>();
+        assert!(reserve_a_amount == 11_000_000_000);
+        assert!(reserve_b_amount == 36_373_556_425); // TODO: explain calculation here
+        assert!(pair.fees_amount<SUI, USDC>() == 0);
+        assert!(pair.lp_locked_amount<SUI, USDC>() == minimum_liquidity());
+        let lp_supply = pair.lp_coin_supply_amount<SUI, USDC>();
+        assert!(lp_supply == 20_000_000_000);
+
+        // Check user's coin balances
+        let sui_coin = test.take_from_address<Coin<SUI>>(BOB);
+        let usdc_coin = test.take_from_address<Coin<USDC>>(BOB);
+        // let lp_coin = test.take_from_address<Coin<LPCoin<SUI, USDC>>>(BOB);
+        assert!(coin::value(&sui_coin) == 9_000_000_000); // swap 1 SUI, got 9 (10-1) left
+        assert!(coin::value(&usdc_coin) == 3_626_443_575); // TODO: explain calculation here
+
+        return_shared(pair);
+        test.return_to_sender(sui_coin);
+        test.return_to_sender(usdc_coin);
     };
 
     test.end();
 }
 
-// SWAP EXACT COINS FOR COINS
-/* 
-    pass
-    deadline_pass
-    wrong version
-    wrong coins to swap 
-    min amount not met
-    right order vs wrong order
-    amount = 0
-    reserve_amount = 0
- */
+// TODO: the reverse order
+#[test]
+fun swap_exact_coins_for_coins__in_reverse_order_successfully() {
+    let mut test = begin(OWNER);
+    let registry_id = setup_test(OWNER, &mut test);
+    let pair_id = setup_pair_created_by_alice(
+        registry_id, 
+        INITIAL_SUI_RESERVE_AMOUNT, 
+        INITIAL_USDC_RESERVE_AMOUNT, 
+        &mut test
+    );
 
-// SWAP COINS FOR EXACT COINS
-/* 
-    pass
-    deadline_pass
-    wrong version
-    wrong coins to swap 
-    min amount not met
-    right order vs wrong order
-    amount = 0
-    reserve_amount = 0
- */
+    test.next_tx(BOB);
+    {
+        deposit_coin_to_address<USDC>(10_000_000_000, BOB, &mut test);
+    };
 
-// TODO: remove pair
-// TODO: set_fees_claimer + claim_fees + remove_fees_claimer (check k_last)
+    test.next_tx(BOB);
+    {
+        let mut clock = test.take_shared<Clock>();
+        let mut pair = test.take_shared_by_id<Pair>(pair_id);
+        let mut usdc_coin = test.take_from_sender<Coin<USDC>>();
+        
+        clock.set_for_testing(10_000);
+
+        amm::swap_exact_coins_for_coins<USDC, SUI>(
+            &mut pair,
+            coin::split(&mut usdc_coin, 4_000_000_000, test.ctx()),
+            0,
+            clock.timestamp_ms(),
+            &clock,
+            test.ctx()
+        );
+
+        return_shared(clock);
+        return_shared(pair);
+        test.return_to_sender(usdc_coin);
+    };
+
+    test.next_tx(BOB);
+    {
+        let pair = test.take_shared_by_id<Pair>(pair_id);
+
+        assert!(pair.allowed_versions<SUI, USDC>().contains(&current_version())); // should I do 
+        assert!(pair.price_last_update_timestamp_s<SUI, USDC>() == 0);
+        let (price_a_cumulative_last, price_b_cumulative_last) = pair.price_cumulative_last<SUI, USDC>();
+        assert!(price_a_cumulative_last.to_scaled_val() == 0);
+        assert!(price_b_cumulative_last.to_scaled_val() == 0);
+        let (reserve_a_amount, reserve_b_amount) = pair.reserves_amount<SUI, USDC>();
+        assert!(reserve_a_amount == 9_093_389_107);
+        assert!(reserve_b_amount == 44_000_000_000);
+        assert!(pair.fees_amount<SUI, USDC>() == 0);
+        assert!(pair.lp_locked_amount<SUI, USDC>() == minimum_liquidity());
+        let lp_supply = pair.lp_coin_supply_amount<SUI, USDC>();
+        assert!(lp_supply == 20_000_000_000);
+
+        // Check user's coin balances
+        let sui_coin = test.take_from_address<Coin<SUI>>(BOB);
+        let usdc_coin = test.take_from_address<Coin<USDC>>(BOB);
+        assert!(coin::value(&sui_coin) == 906_610_893);
+        assert!(coin::value(&usdc_coin) == 6_000_000_000);
+
+        return_shared(pair);
+        test.return_to_sender(sui_coin);
+        test.return_to_sender(usdc_coin);
+    };
+
+    test.end();
+}
+
+// Failed Cases: deadline_pass, wrong_coins, min_amount_not_met
+
+// SWAP COINS FOR EXACT COINS (skip)
+
+// ADMIN FUNCTIONS
+
+// fun remove_pair_successfully (skip)
+
+#[test]
+fun claim_fees_successfully() {
+    /* 
+        setup
+        create pair
+
+        swap
+        claim_fees
+     */
+}
+
 
 // === TEST-ONLY FUNCTIONS ===
 
