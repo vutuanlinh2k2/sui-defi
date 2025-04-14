@@ -10,6 +10,7 @@ use amm::utils::{Self};
 use sui::clock::{Self, Clock};
 use sui::coin::{Self, Coin};
 use sui::test_scenario::{Scenario, begin, end, return_shared, return_to_sender};
+use sui::test_utils;
 
 const OWNER: address = @0x1;
 const ALICE: address = @0xAAAA;
@@ -616,6 +617,7 @@ fun swap_exact_coins_for_coins__in_reverse_order_successfully() {
         let (reserve_a_amount, reserve_b_amount) = pair.reserves_amount<SUI, USDC>();
         assert!(reserve_a_amount == 9_093_389_107);
         assert!(reserve_b_amount == 44_000_000_000);
+        // std::debug::print(&pair.k_last<SUI, USDC>());
         assert!(pair.fees_amount<SUI, USDC>() == 0);
         assert!(pair.lp_locked_amount<SUI, USDC>() == minimum_liquidity());
         let lp_supply = pair.lp_coin_supply_amount<SUI, USDC>();
@@ -645,15 +647,115 @@ fun swap_exact_coins_for_coins__in_reverse_order_successfully() {
 
 #[test]
 fun claim_fees_successfully() {
-    /* 
-        setup
-        create pair
+    let mut test = begin(OWNER);
+    let registry_id = setup_test(OWNER, &mut test);
+    let pair_id = setup_pair_created_by_alice(
+        registry_id, 
+        INITIAL_SUI_RESERVE_AMOUNT, 
+        INITIAL_USDC_RESERVE_AMOUNT, 
+        &mut test
+    );
 
-        swap
-        claim_fees
-     */
+    test.next_tx(BOB);
+    {
+        deposit_coin_to_address<SUI>(10_000_000_000, BOB, &mut test);
+    };
+
+    test.next_tx(BOB);
+    {
+        let mut clock = test.take_shared<Clock>();
+        let mut pair = test.take_shared_by_id<Pair>(pair_id);
+        let mut sui_coin = test.take_from_sender<Coin<SUI>>();
+        
+        clock.set_for_testing(10_000);
+
+        amm::swap_exact_coins_for_coins<SUI, USDC>(
+            &mut pair,
+            coin::split(&mut sui_coin, 1_000_000_000, test.ctx()),
+            0,
+            clock.timestamp_ms(),
+            &clock,
+            test.ctx()
+        );
+
+        return_shared(clock);
+        return_shared(pair);
+        test.return_to_sender(sui_coin);
+    };
+
+    test.next_tx(BOB);
+    {
+        deposit_coin_to_address<SUI>(10_000_000_000, BOB, &mut test);
+        deposit_coin_to_address<USDC>(5_000_000_000, BOB, &mut test);
+    };
+
+    test.next_tx(BOB);
+    {
+        let mut clock = test.take_shared<Clock>();
+        let registry = test.take_shared_by_id<Registry>(registry_id);
+        let mut pair = test.take_shared_by_id<Pair>(pair_id);
+        let mut sui_coin = test.take_from_sender<Coin<SUI>>();
+        
+        clock.set_for_testing(10_000);
+
+        amm::add_liquidity_and_mint_lp_coin<SUI, USDC>(
+            &registry,
+            &mut pair,
+            coin::split(&mut sui_coin, 1_000_000_000, test.ctx()),
+            test.take_from_sender<Coin<USDC>>(),
+            0,
+            0,
+            clock.timestamp_ms(),
+            &clock,
+            test.ctx()
+        );
+
+        return_shared(clock);
+        return_shared(registry);
+        return_shared(pair);
+        test.return_to_sender(sui_coin);
+    };
+
+    test.next_tx(OWNER);
+    {
+        let mut registry = test.take_shared_by_id<Registry>(registry_id);
+        let mut pair = test.take_shared_by_id<Pair>(pair_id);
+        let admin_cap = registry::get_admin_cap_for_testing(test.ctx());
+
+
+        amm::claim_fees<SUI, USDC>(
+            &mut registry,
+            &mut pair,
+            &admin_cap,
+            test.ctx()
+        );
+
+        return_shared(registry);
+        return_shared(pair);
+        test_utils::destroy(admin_cap);
+    };
+
+    test.next_tx(OWNER);
+    {
+        let pair = test.take_shared_by_id<Pair>(pair_id);
+        assert!(pair.fees_amount<SUI, USDC>() == 0);
+
+        let (reserve_a_amount, reserve_b_amount) = pair.reserves_amount<SUI, USDC>();
+        assert!(reserve_a_amount == 12_000_000_000);
+        assert!(reserve_b_amount == 39_680_243_372);
+
+        let lp_fees_coin = test.take_from_sender<Coin<LPCoin<SUI, USDC>>>();
+        assert!(&coin::value(&lp_fees_coin) == 454_586);
+
+        assert!(pair.lp_coin_supply_amount<SUI, USDC>() == 21818636403);
+
+        return_shared(pair);
+        test.return_to_sender(lp_fees_coin);
+    };
+
+    test.end();
+
 }
-
 
 // === TEST-ONLY FUNCTIONS ===
 
@@ -661,7 +763,7 @@ fun claim_fees_successfully() {
 fun setup_test(owner: address, test: &mut Scenario): ID {
     test.next_tx(owner);
     share_clock(test);
-    share_registry_for_testing(test)
+    share_registry_for_testing(test)  
 }
 
 #[test_only]
