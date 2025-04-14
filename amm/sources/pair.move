@@ -37,8 +37,8 @@ public struct PairInner<phantom CoinA, phantom CoinB> has store {
     pair_id: ID,
     allowed_versions: VecSet<u64>,
     price_last_update_timestamp_s: u64,
-    price_a_cumulative_last: Decimal, // need to scale up to present float
-    price_b_cumulative_last: Decimal, // need to scale up to present float
+    price_a_cumulative_last: Decimal, // need to scale up to present float, used for TWAP
+    price_b_cumulative_last: Decimal, // need to scale up to present float, used for TWAP
     k_last: u128,
     coin_a_reserve: Balance<CoinA>,
     coin_b_reserve: Balance<CoinB>,
