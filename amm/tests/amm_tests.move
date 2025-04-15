@@ -545,7 +545,7 @@ fun swap_exact_coins_for_coins_successfully() {
         assert!(price_b_cumulative_last.to_scaled_val() == 0);
         let (reserve_a_amount, reserve_b_amount) = pair.reserves_amount<SUI, USDC>();
         assert!(reserve_a_amount == 11_000_000_000);
-        assert!(reserve_b_amount == 36_373_556_425); // TODO: explain calculation here
+        assert!(reserve_b_amount == 36_373_556_425);
         assert!(pair.fees_amount<SUI, USDC>() == 0);
         assert!(pair.lp_locked_amount<SUI, USDC>() == minimum_liquidity());
         let lp_supply = pair.lp_coin_supply_amount<SUI, USDC>();
@@ -556,7 +556,7 @@ fun swap_exact_coins_for_coins_successfully() {
         let usdc_coin = test.take_from_address<Coin<USDC>>(BOB);
         // let lp_coin = test.take_from_address<Coin<LPCoin<SUI, USDC>>>(BOB);
         assert!(coin::value(&sui_coin) == 9_000_000_000); // swap 1 SUI, got 9 (10-1) left
-        assert!(coin::value(&usdc_coin) == 3_626_443_575); // TODO: explain calculation here
+        assert!(coin::value(&usdc_coin) == 3_626_443_575);
 
         return_shared(pair);
         test.return_to_sender(sui_coin);
@@ -566,7 +566,6 @@ fun swap_exact_coins_for_coins_successfully() {
     test.end();
 }
 
-// TODO: the reverse order
 #[test]
 fun swap_exact_coins_for_coins__in_reverse_order_successfully() {
     let mut test = begin(OWNER);

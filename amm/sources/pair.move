@@ -94,17 +94,17 @@ public fun allowed_versions<CoinA, CoinB>(self: &Pair): VecSet<u64> {
     self.allowed_versions
 }
 
-public fun price_last_update_timestamp_s<CoinA, CoinB>(self: &Pair): u64 { // TODO: public(package) only
+public fun price_last_update_timestamp_s<CoinA, CoinB>(self: &Pair): u64 {
     let self = self.load_inner<CoinA, CoinB>();
     self.price_last_update_timestamp_s
 }
 
-public fun price_cumulative_last<CoinA, CoinB>(self: &Pair): (Decimal, Decimal) { // TODO: public(package) only
+public fun price_cumulative_last<CoinA, CoinB>(self: &Pair): (Decimal, Decimal) {
     let self = self.load_inner<CoinA, CoinB>();
     (self.price_a_cumulative_last, self.price_b_cumulative_last)
 }
 
-public fun k_last<CoinA, CoinB>(self: &Pair): u128 { // TODO: public(package) only
+public fun k_last<CoinA, CoinB>(self: &Pair): u128 {
     let self = self.load_inner<CoinA, CoinB>();
     self.k_last
 }
@@ -591,7 +591,7 @@ fun quote_with_assert(amount_a: u64, amount_reserve_a: u64, amount_reserve_b: u6
     (((amount_a as u128) * (amount_reserve_b as u128)) / (amount_reserve_a as u128)  as u64)
 }
 
-public(package) fun load_inner<CoinA, CoinB>(self: &Pair): &PairInner<CoinA, CoinB> {
+fun load_inner<CoinA, CoinB>(self: &Pair): &PairInner<CoinA, CoinB> {
     let inner: &PairInner<CoinA, CoinB> = self.inner.load_value();
     let package_version = constants::current_version();
     assert!(inner.allowed_versions.contains(&package_version), EPackageVersionDisabled);
