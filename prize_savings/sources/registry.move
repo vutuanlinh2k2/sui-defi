@@ -31,6 +31,7 @@ public struct Registry has key {
 public struct RegistryInner has store {
     allowed_versions: VecSet<u64>,
     pools: Table<PoolKey, ID>,
+    // fees_claimer: address - skip this for now
 }
 
 public struct PoolKey has copy, drop, store {
