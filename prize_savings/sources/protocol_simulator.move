@@ -1,5 +1,5 @@
 /// A module that simulate a protocol that earn yields for depositors
-module prize_savings::yield_simulator;
+module prize_savings::protocol_simulator;
 
 use prize_savings::decimal::{Self, Decimal, div, mul, floor};
 use sui::balance::{Self, Balance, Supply};
@@ -14,55 +14,50 @@ const EReserveAlreadyExists: u64 = 2;
 const EReserveNotExists: u64 = 3;
 
 // === Constants ===
-const YIELD_SIMULATOR_VERSION: u64 = 1;
+const PROTOCOL_SIMULATOR_VERSION: u64 = 1;
 
 // === Structs ===
+public struct PS_REGISTRY has drop {}
 
-public struct YS_REGISTRY has drop {}
-
-public struct YSRegistry has key {
+public struct PSRegistry has key {
     id: UID,
     inner: Versioned,
 }
 
-public struct YSRegistryInner has store {
+public struct PSRegistryInner has store {
     current_version: u64,
-    reserves: Table<ReserveKey, ID>,
+    reserves: Table<TypeName, ID>,
 }
 
-public struct YSAdminCap has key, store {
+public struct PSAdminCap has key, store {
     id: UID,
 }
 
-public struct ReserveKey has copy, drop, store {
-    asset: TypeName
-}
-
-public struct YSReserve<phantom T> has key {
+public struct PSReserve<phantom T> has key {
     id: UID,
     token_balance: Balance<T>,
     yb_token_supply: Supply<YBToken<T>>
 }
 
+/// Yield-Bearing Token
 public struct YBToken<phantom T> has drop {}
 
 // === Public View Functions ===
-public fun token_balance_amount<T>(reserve: &YSReserve<T>): u64 {
+public fun token_balance_amount<T>(reserve: &PSReserve<T>): u64 {
     balance::value(&reserve.token_balance)
 }
 
-public fun yb_token_supply_amount<T>(reserve: &YSReserve<T>): u64 {
+public fun yb_token_supply_amount<T>(reserve: &PSReserve<T>): u64 {
     balance::supply_value(&reserve.yb_token_supply)
 }
 
 // === Public Mutative Functions ===
 
-#[allow(lint(self_transfer))]
 public fun deposit_and_mint_yb_token<T>(
-    reserve: &mut YSReserve<T>, 
+    reserve: &mut PSReserve<T>, 
     liquidity: Coin<T>, 
     ctx: &mut TxContext
-) {
+): Coin<YBToken<T>> {
     assert!(coin::value(&liquidity) > 0);
 
     let yb_token_ratio = reserve.get_yb_token_ratio();
@@ -73,16 +68,14 @@ public fun deposit_and_mint_yb_token<T>(
     ));
 
     balance::join(&mut reserve.token_balance, coin::into_balance(liquidity));
-    let yb_tokens = coin::from_balance(balance::increase_supply(&mut reserve.yb_token_supply, new_yb_token_amount), ctx);
-    transfer::public_transfer(yb_tokens, ctx.sender());
+    coin::from_balance(balance::increase_supply(&mut reserve.yb_token_supply, new_yb_token_amount), ctx)
 }
 
-#[allow(lint(self_transfer))]
 public fun redeem_yb_token_and_withdraw<T>(
-    reserve: &mut YSReserve<T>, 
+    reserve: &mut PSReserve<T>, 
     yb_tokens: Coin<YBToken<T>>, 
     ctx: &mut TxContext
-) {
+): Coin<T> {
     assert!(coin::value(&yb_tokens) > 0);
     let yb_token_ratio = reserve.get_yb_token_ratio();
     let liquidity_amount = floor(mul(
@@ -91,28 +84,27 @@ public fun redeem_yb_token_and_withdraw<T>(
     ));
 
     balance::decrease_supply(&mut reserve.yb_token_supply, coin::into_balance(yb_tokens));
-    let tokens = coin::from_balance(balance::split(&mut reserve.token_balance, liquidity_amount), ctx);
-    transfer::public_transfer(tokens, ctx.sender());
+    coin::from_balance(balance::split(&mut reserve.token_balance, liquidity_amount), ctx)
 }
 
 /// Manually deposit more into the balance so when the amount when withdrawing
 /// will be bigger than when depositing
-public fun increase_reserve_balance<T>(reserve: &mut YSReserve<T>, tokens: Coin<T>) {
+public fun increase_reserve_balance<T>(reserve: &mut PSReserve<T>, tokens: Coin<T>) {
     assert!(coin::value(&tokens) > 0);
     balance::join(&mut reserve.token_balance, coin::into_balance(tokens));
 }
 
 // === Admin Functions ===
 
-public fun create_yield_simulator(ctx: &mut TxContext): (ID, YSAdminCap)  {
-    let registry_inner = YSRegistryInner {
-        current_version: YIELD_SIMULATOR_VERSION,
+public fun create_protocol_simulator(ctx: &mut TxContext): (ID, PSAdminCap)  {
+    let registry_inner = PSRegistryInner {
+        current_version: PROTOCOL_SIMULATOR_VERSION,
         reserves: table::new(ctx),
     };
-    let registry = YSRegistry {
+    let registry = PSRegistry {
         id: object::new(ctx),
         inner: versioned::create(
-            YIELD_SIMULATOR_VERSION,
+            PROTOCOL_SIMULATOR_VERSION,
             registry_inner,
             ctx,
         ),
@@ -121,13 +113,13 @@ public fun create_yield_simulator(ctx: &mut TxContext): (ID, YSAdminCap)  {
 
     transfer::share_object(registry);
 
-    let admin_cap = YSAdminCap { id: object::new(ctx) };
+    let admin_cap = PSAdminCap { id: object::new(ctx) };
 
     (id, admin_cap)
 }
 
-public fun create_reserve<T>(registry: &mut YSRegistry, cap: &YSAdminCap, ctx: &mut TxContext): ID {
-    let reserve = YSReserve<T> {
+public fun create_reserve<T>(registry: &mut PSRegistry, cap: &PSAdminCap, ctx: &mut TxContext): ID {
+    let reserve = PSReserve<T> {
         id: object::new(ctx),
         token_balance: balance::zero<T>(),
         yb_token_supply: balance::create_supply(YBToken<T> {})
@@ -142,27 +134,23 @@ public fun create_reserve<T>(registry: &mut YSRegistry, cap: &YSAdminCap, ctx: &
     reserve_id
 }
 
-public fun remove_reserve<T>(registry: &mut YSRegistry) {
+public fun remove_reserve<T>(registry: &mut PSRegistry) {
     let registry = registry.load_inner_mut();
-    let key = ReserveKey {
-        asset: type_name::get<T>()
-    };
+    let key = type_name::get<T>();
     assert!(registry.reserves.contains(key), EReserveNotExists);
-    registry.reserves.remove<ReserveKey, ID>(key);
+    registry.reserves.remove<TypeName, ID>(key);
 }
 
 // === Private Functions ===
 
-fun register_reserve<T>(registry: &mut YSRegistry, reserve_id: ID, _cap: &YSAdminCap) {
+fun register_reserve<T>(registry: &mut PSRegistry, reserve_id: ID, _cap: &PSAdminCap) {
     let registry = registry.load_inner_mut();
-    let key = ReserveKey {
-        asset: type_name::get<T>()
-    };
+    let key = type_name::get<T>();
     assert!(!registry.reserves.contains(key), EReserveAlreadyExists);
     registry.reserves.add(key, reserve_id);
 }
 
-fun get_yb_token_ratio<T>(reserve: &YSReserve<T>): Decimal {
+fun get_yb_token_ratio<T>(reserve: &PSReserve<T>): Decimal {
     let yb_token_supply_amount = balance::supply_value(&reserve.yb_token_supply);
     if (yb_token_supply_amount == 0) {
         decimal::from(1)
@@ -175,9 +163,9 @@ fun get_yb_token_ratio<T>(reserve: &YSReserve<T>): Decimal {
     }
 }
 
-fun load_inner_mut(self: &mut YSRegistry): &mut YSRegistryInner {
-    let inner: &mut YSRegistryInner = self.inner.load_value_mut();
-    assert!(inner.current_version == YIELD_SIMULATOR_VERSION, EInvalidVersion);
+fun load_inner_mut(self: &mut PSRegistry): &mut PSRegistryInner {
+    let inner: &mut PSRegistryInner = self.inner.load_value_mut();
+    assert!(inner.current_version == PROTOCOL_SIMULATOR_VERSION, EInvalidVersion);
 
     inner
 }
@@ -185,16 +173,16 @@ fun load_inner_mut(self: &mut YSRegistry): &mut YSRegistryInner {
 // === Test Functions ===
 
 #[test_only]
-public fun test_yield_simulator_registry(ctx: &mut TxContext): ID {
-    let registry_inner = YSRegistryInner {
-        current_version: YIELD_SIMULATOR_VERSION,
+public fun test_protocol_simulator_registry(ctx: &mut TxContext): ID {
+    let registry_inner = PSRegistryInner {
+        current_version: PROTOCOL_SIMULATOR_VERSION,
         reserves: table::new(ctx),
     };
 
-    let registry = YSRegistry {
+    let registry = PSRegistry {
         id: object::new(ctx),
         inner: versioned::create(
-            YIELD_SIMULATOR_VERSION,
+            PROTOCOL_SIMULATOR_VERSION,
             registry_inner,
             ctx,
         ),
@@ -207,6 +195,6 @@ public fun test_yield_simulator_registry(ctx: &mut TxContext): ID {
 }
 
 #[test_only]
-public fun get_yield_simulator_admin_cap_for_testing(ctx: &mut TxContext): YSAdminCap {
-    YSAdminCap { id: object::new(ctx) }
+public fun get_protocol_simulator_admin_cap_for_testing(ctx: &mut TxContext): PSAdminCap {
+    PSAdminCap { id: object::new(ctx) }
 }
