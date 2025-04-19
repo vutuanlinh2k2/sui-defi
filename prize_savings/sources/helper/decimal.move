@@ -63,3 +63,7 @@ public(package) fun to_scaled_val(v: Decimal): u256 {
 public(package) fun floor(a: Decimal): u64 {
     ((a.value / FLOAT_SCALING) as u64)
 }
+
+public fun ceil(a: Decimal): u64 {
+    (((a.value + FLOAT_SCALING - 1) / FLOAT_SCALING) as u64)
+}
