@@ -12,7 +12,7 @@ use prize_savings::twab_controller::{TwabController, create_twab_controller};
 use sui::balance::{Self, Balance, Supply};
 use sui::coin::{Self, Coin};
 use sui::clock::{Clock};
-use sui::random::{Random};
+use sui::random::{Random};  
 
 // === Errors ===
 const ENewDrawNotReady: u64 = 1;
@@ -57,7 +57,13 @@ public fun deposit_to_pool_and_mint_p_token<T>(
         twab_controller.add_new_user_twab_info(sender, clock);
     };
 
-    twab_controller.update(p_amount, sender, true, clock);
+    twab_controller.update(
+        p_amount, 
+        sender, 
+        true,
+        self.current_draw_start_timestamp_s,
+        clock
+    );
 
     transfer::public_transfer(p_tokens, sender);  
 }
@@ -79,7 +85,13 @@ public fun withdraw_from_pool_and_burn_p_token<T>(
     let sender = ctx.sender();
     let twab_controller = &mut self.twab_controller;
 
-    twab_controller.update(p_amount, sender, false, clock);
+    twab_controller.update(
+        p_amount, 
+        sender, 
+        false,
+        self.current_draw_start_timestamp_s,
+        clock
+    );
 
     let tokens = reserve.redeem_yb_token_and_withdraw(yb_tokens, ctx);
     transfer::public_transfer(tokens, sender);

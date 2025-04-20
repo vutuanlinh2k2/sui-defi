@@ -27,12 +27,24 @@ public(package) fun update(
     balance_change: u64,
     user_address: address,
     is_deposit: bool,
+    current_draw_start_timestamp_s: u64,
     clock: &Clock
 ) {
-    self.twab_total.update(balance_change, is_deposit, clock);
+    self.twab_total.update(
+        balance_change, 
+        is_deposit,
+        current_draw_start_timestamp_s,
+        clock
+    );
 
     let twab_by_user = self.twab_by_users.get_mut(&user_address);
-    twab_info::update(twab_by_user, balance_change, is_deposit, clock);
+    twab_info::update(
+        twab_by_user, 
+        balance_change, 
+        is_deposit,
+        current_draw_start_timestamp_s,
+        clock
+    );
 }
 
 public(package) fun add_new_user_twab_info(self: &mut TwabController, user_address: address, clock: &Clock) {
