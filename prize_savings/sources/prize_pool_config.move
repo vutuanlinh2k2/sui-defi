@@ -11,21 +11,34 @@ const EInvalidTierCount: u64 = 6;
 // === Structs ===
 public struct PrizePoolConfig has store {
     prize_frequency_days: u8, // Eg. new pool_prize will be created once every 7 days
-    tier_prize_counts: vector<u8>,
-    tier_prize_weights: vector<u8>,
+    prize_count_per_tier: vector<u8>,
+    weight_per_tier: vector<u8>,
+}
+
+// === Public View Functions ===
+public fun prize_frequency_days(self: &PrizePoolConfig): u8 {
+    self.prize_frequency_days
+}
+
+public fun prize_count_per_tier(self: &PrizePoolConfig): vector<u8> {
+    self.prize_count_per_tier
+}
+
+public fun weight_per_tier(self: &PrizePoolConfig): vector<u8> {
+    self.weight_per_tier
 }
 
 // === Package Functions ===
 
 public(package) fun create_pool_prize_config(
     prize_frequency_days: u8,
-    tier_prize_counts: vector<u8>,
-    tier_prize_weights: vector<u8>,
+    prize_count_per_tier: vector<u8>,
+    weight_per_tier: vector<u8>,
 ): PrizePoolConfig {
     let config = PrizePoolConfig {
         prize_frequency_days,
-        tier_prize_counts,
-        tier_prize_weights
+        prize_count_per_tier,
+        weight_per_tier
     };
 
     assert_pool_prize_config(&config);
@@ -37,35 +50,35 @@ public(package) fun create_pool_prize_config(
 
 fun assert_pool_prize_config(self: &PrizePoolConfig) {
     let prize_frequency_days = self.prize_frequency_days;
-    let tier_prize_counts = self.tier_prize_counts;
-    let tier_prize_weights = self.tier_prize_weights;
+    let prize_count_per_tier = self.prize_count_per_tier;
+    let weight_per_tier = self.weight_per_tier;
 
     assert!(prize_frequency_days > 0, EInvalidFrequency);
-    assert!(tier_prize_counts.length() > 0 && tier_prize_weights.length() > 0, EEmptyTiers);
-    assert!(tier_prize_counts.length() == tier_prize_weights.length(), EInvalidTierConfig);
+    assert!(prize_count_per_tier.length() > 0 && weight_per_tier.length() > 0, EEmptyTiers);
+    assert!(prize_count_per_tier.length() == weight_per_tier.length(), EInvalidTierConfig);
 
-    assert_tier_prize_counts(tier_prize_counts);
-    assert_tier_prize_weights(tier_prize_weights);
+    assert_prize_count_per_tier(prize_count_per_tier);
+    assert_weight_per_tier(weight_per_tier);
 }
 
-fun assert_tier_prize_counts(tier_prize_counts: vector<u8>) {
-    let length = tier_prize_counts.length();
+fun assert_prize_count_per_tier(prize_count_per_tier: vector<u8>) {
+    let length = prize_count_per_tier.length();
     let mut i = 0;
 
     while (i < length) {
-        let tier_weight = *tier_prize_counts.borrow(i);
+        let tier_weight = *prize_count_per_tier.borrow(i);
         assert!(tier_weight > 0, EInvalidTierCount);
         i = i + 1;
     };
 }
 
-fun assert_tier_prize_weights(tier_prize_weights: vector<u8>) {
+fun assert_weight_per_tier(weight_per_tier: vector<u8>) {
     let mut sum :u8 = 0;
-    let length = tier_prize_weights.length();
+    let length = weight_per_tier.length();
     
     let mut i = 0;
     while (i < length) {
-        let tier_weight = *tier_prize_weights.borrow(i);
+        let tier_weight = *weight_per_tier.borrow(i);
         assert!(tier_weight > 0, EInvalidTierWeight);
         sum = sum + tier_weight;
         i = i + 1;

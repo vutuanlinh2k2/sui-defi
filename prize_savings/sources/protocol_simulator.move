@@ -51,6 +51,19 @@ public fun yb_token_supply_amount<T>(reserve: &PSReserve<T>): u64 {
     balance::supply_value(&reserve.yb_token_supply)
 }
 
+public fun yb_token_ratio<T>(reserve: &PSReserve<T>): Decimal {
+    let yb_token_supply_amount = balance::supply_value(&reserve.yb_token_supply);
+    if (yb_token_supply_amount == 0) {
+        decimal::from(1)
+    } else {
+        let total_balance = balance::value(&reserve.token_balance);
+        div(
+            decimal::from(total_balance),
+            decimal::from(yb_token_supply_amount)
+        )
+    }
+}
+
 // === Public Mutative Functions ===
 
 public fun deposit_and_mint_yb_token<T>(
@@ -60,7 +73,7 @@ public fun deposit_and_mint_yb_token<T>(
 ): Coin<YBToken<T>> {
     assert!(coin::value(&liquidity) > 0);
 
-    let yb_token_ratio = reserve.get_yb_token_ratio();
+    let yb_token_ratio = reserve.yb_token_ratio();
 
     let new_yb_token_amount = floor(div(
         decimal::from(coin::value(&liquidity)),
@@ -77,7 +90,7 @@ public fun redeem_yb_token_and_withdraw<T>(
     ctx: &mut TxContext
 ): Coin<T> {
     assert!(coin::value(&yb_tokens) > 0);
-    let yb_token_ratio = reserve.get_yb_token_ratio();
+    let yb_token_ratio = reserve.yb_token_ratio();
     let liquidity_amount = floor(mul(
         decimal::from(coin::value(&yb_tokens)),
         yb_token_ratio
@@ -87,7 +100,7 @@ public fun redeem_yb_token_and_withdraw<T>(
     coin::from_balance(balance::split(&mut reserve.token_balance, liquidity_amount), ctx)
 }
 
-/// Manually deposit more into the balance so when the amount when withdrawing
+/// Manually deposit more into the balance so the amount when withdrawing
 /// will be bigger than when depositing
 public fun increase_reserve_balance<T>(reserve: &mut PSReserve<T>, tokens: Coin<T>) {
     assert!(coin::value(&tokens) > 0);
@@ -148,19 +161,6 @@ fun register_reserve<T>(registry: &mut PSRegistry, reserve_id: ID, _cap: &PSAdmi
     let key = type_name::get<T>();
     assert!(!registry.reserves.contains(key), EReserveAlreadyExists);
     registry.reserves.add(key, reserve_id);
-}
-
-fun get_yb_token_ratio<T>(reserve: &PSReserve<T>): Decimal {
-    let yb_token_supply_amount = balance::supply_value(&reserve.yb_token_supply);
-    if (yb_token_supply_amount == 0) {
-        decimal::from(1)
-    } else {
-        let total_balance = balance::value(&reserve.token_balance);
-        div(
-            decimal::from(total_balance),
-            decimal::from(yb_token_supply_amount)
-        )
-    }
 }
 
 fun load_inner_mut(self: &mut PSRegistry): &mut PSRegistryInner {
