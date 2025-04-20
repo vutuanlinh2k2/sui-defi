@@ -6,7 +6,7 @@ module prize_savings::pool;
 use prize_savings::decimal::{Decimal, ceil, mul, div, from};
 use prize_savings::prize_pool_config::{PrizePoolConfig};
 use prize_savings::prize_pool::{create_prize_pool};
-use prize_savings::protocol_simulator::{PSReserve, YBToken};
+use prize_savings::protocol::{Reserve, YBToken};
 use prize_savings::registry::{AdminCap};
 use prize_savings::twab_controller::{TwabController, create_twab_controller};
 use sui::balance::{Self, Balance, Supply};
@@ -37,7 +37,7 @@ public struct PToken<phantom T> has drop {}
 #[allow(lint(self_transfer))]
 public fun deposit_to_pool_and_mint_p_token<T>(
     self: &mut Pool<T>,
-    reserve: &mut PSReserve<T>, 
+    reserve: &mut Reserve<T>, 
     tokens: Coin<T>,
     clock: &Clock,
     ctx: &mut TxContext
@@ -65,7 +65,7 @@ public fun deposit_to_pool_and_mint_p_token<T>(
 #[allow(lint(self_transfer))]
 public fun withdraw_from_pool_and_burn_p_token<T>(
     self: &mut Pool<T>,
-    reserve: &mut PSReserve<T>,   
+    reserve: &mut Reserve<T>,   
     p_tokens: Coin<PToken<T>>,
     clock: &Clock,
     ctx: &mut TxContext
@@ -88,7 +88,7 @@ public fun withdraw_from_pool_and_burn_p_token<T>(
 #[allow(lint(public_random))]
 public fun new_draw_and_prize_pool<T>(
     self: &mut Pool<T>,
-    reserve: &mut PSReserve<T>,
+    reserve: &mut Reserve<T>,
     clock: &Clock,
     r: &Random,
     ctx: &mut TxContext
@@ -149,7 +149,7 @@ public fun reserve_id<T>(self: &Pool<T>): ID {
 
 // === Admin Functions ===
 public fun create_new_pool<T>(
-    reserve: &PSReserve<T>, 
+    reserve: &Reserve<T>, 
     prize_pool_config: PrizePoolConfig, 
     _cap: &AdminCap,
     clock: &Clock,
