@@ -197,3 +197,17 @@ public fun test_protocol_registry(ctx: &mut TxContext): ID {
 public fun get_protocol_admin_cap_for_testing(ctx: &mut TxContext): ProtocolAdminCap {
     ProtocolAdminCap { id: object::new(ctx) }
 }
+
+#[test_only]
+public fun create_test_reserve<T>(ctx: &mut TxContext): ID {
+    let reserve = Reserve<T> {
+        id: object::new(ctx),
+        token_balance: balance::zero<T>(),
+        yb_token_supply: balance::create_supply(YBToken<T> {})
+    };
+
+    let id = object::id(&reserve);
+    transfer::share_object(reserve);
+
+    id
+}

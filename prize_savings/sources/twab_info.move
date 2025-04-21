@@ -27,13 +27,6 @@ public(package) fun update(
     current_draw_start_timestamp_s: u64,
     clock: &Clock
 ) {
-    let updated_balance = if (is_deposit) {
-        self.balance_last + balance_change
-    } else {
-        self.balance_last - balance_change
-    };
-    self.balance_last = updated_balance;
-
     if (self.last_update_timestamp_s < current_draw_start_timestamp_s) {
         self.current_draw_initial_balance_accumulation = self.balance_accumulation_last;
     };
@@ -41,8 +34,15 @@ public(package) fun update(
     let current_time_s = clock.timestamp_ms() / 1000;
     let time_elapsed_s = current_time_s - self.last_update_timestamp_s;
 
-    if (time_elapsed_s > 0 && updated_balance > 0) {
-        self.balance_accumulation_last = self.balance_accumulation_last + time_elapsed_s * updated_balance;
+    if (time_elapsed_s > 0 && self.balance_last > 0) {
+        self.balance_accumulation_last = self.balance_accumulation_last + time_elapsed_s * self.balance_last;
         self.last_update_timestamp_s = current_time_s;
     };
+
+    let updated_balance = if (is_deposit) {
+        self.balance_last + balance_change
+    } else {
+        self.balance_last - balance_change
+    };
+    self.balance_last = updated_balance;
 }

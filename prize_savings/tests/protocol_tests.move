@@ -5,7 +5,7 @@ use prize_savings::protocol::{Self, ProtocolRegistry, Reserve, YBToken};
 use prize_savings::test_utils::{deposit_coin_to_address};
 use sui::coin::{Coin};
 use sui::test_scenario::{begin, end, return_shared, return_to_sender};
-use sui::{test_utils as system_test_utils};
+use sui::test_utils::{destroy};
 
 const OWNER: address = @0x1;
 const ALICE: address = @0xAAAA;
@@ -28,7 +28,7 @@ public fun test_protocol() {
         let reserve_id = protocol::create_reserve<SUI>(&mut registry, &admin_cap, test.ctx());
 
         return_shared(registry);
-        system_test_utils::destroy(admin_cap);
+        destroy(admin_cap);
 
         reserve_id  
     };

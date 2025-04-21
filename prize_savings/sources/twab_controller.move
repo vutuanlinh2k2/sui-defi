@@ -1,7 +1,7 @@
 /// TODO: add explanation
 module prize_savings::twab_controller;
 
-use prize_savings::twab_info::{Self, TwabInfo, create_twab_info};
+use prize_savings::twab_info::{TwabInfo, create_twab_info};
 use sui::clock::{Clock};
 use sui::vec_map::{Self, VecMap};
 
@@ -22,6 +22,7 @@ public(package) fun create_twab_controller(clock: &Clock): TwabController {
     }
 }
 
+// === Package Mutative Functions
 public(package) fun update(
     self: &mut TwabController,
     balance_change: u64,
@@ -38,8 +39,7 @@ public(package) fun update(
     );
 
     let twab_by_user = self.twab_by_users.get_mut(&user_address);
-    twab_info::update(
-        twab_by_user, 
+    twab_by_user.update(
         balance_change, 
         is_deposit,
         current_draw_start_timestamp_s,
@@ -54,5 +54,5 @@ public(package) fun add_new_user_twab_info(self: &mut TwabController, user_addre
 
 // === Package View Functions ===
 public(package) fun is_new_user(self: &TwabController, user_address: address): bool {
-    self.twab_by_users.contains(&user_address)
+    !self.twab_by_users.contains(&user_address)
 }

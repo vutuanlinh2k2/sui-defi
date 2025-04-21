@@ -9,7 +9,7 @@ const EInvalidTierWeightsSum: u64 = 5;
 const EInvalidTierCount: u64 = 6;
 
 // === Structs ===
-public struct PrizePoolConfig has store {
+public struct PrizePoolConfig has store, copy {
     prize_frequency_days: u8, // Eg. new pool_prize will be created once every 7 days
     prize_count_per_tier: vector<u8>,
     weight_per_tier: vector<u8>,
@@ -41,14 +41,14 @@ public(package) fun create_pool_prize_config(
         weight_per_tier
     };
 
-    assert_pool_prize_config(&config);
+    assert_config(&config);
 
     config
 }
 
 // === Private Functions ===
 
-fun assert_pool_prize_config(self: &PrizePoolConfig) {
+fun assert_config(self: &PrizePoolConfig) {
     let prize_frequency_days = self.prize_frequency_days;
     let prize_count_per_tier = self.prize_count_per_tier;
     let weight_per_tier = self.weight_per_tier;
@@ -85,4 +85,28 @@ fun assert_weight_per_tier(weight_per_tier: vector<u8>) {
     };
 
     assert!(sum == 100, EInvalidTierWeightsSum);
+}
+
+// === Test Functions ===
+#[test_only]
+public fun create_test_prize_pool_config(): PrizePoolConfig {
+    let mut prize_count_per_tier = vector::empty<u8>();
+    prize_count_per_tier.push_back(1);
+    prize_count_per_tier.push_back(4);
+    prize_count_per_tier.push_back(16);
+
+    let mut weight_per_tier = vector::empty<u8>();
+    weight_per_tier.push_back(30);
+    weight_per_tier.push_back(30);
+    weight_per_tier.push_back(40);
+
+    let prize_pool_config = PrizePoolConfig {
+        prize_frequency_days: 1,
+        prize_count_per_tier,
+        weight_per_tier,
+    }; 
+
+    prize_pool_config.assert_config();
+
+    prize_pool_config
 }

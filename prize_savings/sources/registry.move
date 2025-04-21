@@ -77,7 +77,7 @@ public fun disable_version(self: &mut Registry, version: u64, _cap: &AdminCap) {
     self.allowed_versions.remove(&version);
 }
 
-public (package) fun register_pool<Asset, YieldSource>(self: &mut Registry, pool_id: ID, _cap: &AdminCap) {
+public(package) fun register_pool<Asset, YieldSource>(self: &mut Registry, pool_id: ID, _cap: &AdminCap) {
     let self = self.load_inner_mut();
     let key = PoolKey {
         asset: type_name::get<Asset>(),
@@ -87,7 +87,7 @@ public (package) fun register_pool<Asset, YieldSource>(self: &mut Registry, pool
     self.pools.add(key, pool_id);
 }
 
-public(package) fun unregister_pair<Asset, YieldSource>(self: &mut Registry, _cap: &AdminCap) {
+public(package) fun unregister_pool<Asset, YieldSource>(self: &mut Registry, _cap: &AdminCap) {
     let self = self.load_inner_mut();
     let key = PoolKey {
         asset: type_name::get<Asset>(),
@@ -97,7 +97,7 @@ public(package) fun unregister_pair<Asset, YieldSource>(self: &mut Registry, _ca
     self.pools.remove<PoolKey, ID>(key);
 }
 
-// Private Functions
+// === Private Functions ===
 
 fun load_inner_mut(self: &mut Registry): &mut RegistryInner {
     let inner: &mut RegistryInner = self.inner.load_value_mut();
@@ -105,4 +105,31 @@ fun load_inner_mut(self: &mut Registry): &mut RegistryInner {
     assert!(inner.allowed_versions.contains(&package_version), EPackageVersionNotEnabled);
 
     inner
+}
+
+// === Test Functions ===
+public fun test_registry(ctx: &mut TxContext): ID {
+    let registry_inner = RegistryInner {
+        allowed_versions: vec_set::singleton(constants::current_version()),
+        pools: table::new(ctx),
+    };
+
+    let registry = Registry {
+        id: object::new(ctx),
+        inner: versioned::create(
+            constants::current_version(),
+            registry_inner,
+            ctx,
+        ),
+    };
+
+    let id = object::id(&registry);
+    transfer::share_object(registry);
+
+    id
+}
+
+#[test_only]
+public fun get_admin_cap_for_testing(ctx: &mut TxContext): AdminCap {
+    AdminCap { id: object::new(ctx) }
 }
