@@ -5,7 +5,7 @@ module prize_savings::pool;
 
 use prize_savings::decimal::{Decimal, floor, mul, div, from};
 use prize_savings::prize_pool_config::{PrizePoolConfig};
-use prize_savings::prize_pool::{create_and_share_prize_pool};
+use prize_savings::prize_pool::{PrizePool, create_and_share_prize_pool};
 use prize_savings::protocol::{Reserve, YBToken};
 use prize_savings::registry::{AdminCap};
 use prize_savings::twab_controller::{TwabController, create_twab_controller};
@@ -16,6 +16,7 @@ use sui::random::{Random};
 
 // === Errors ===
 const ENewDrawNotReady: u64 = 1;
+const EPrizePoolNotExpired: u64 = 2;
 
 // === Structs ===
 public struct Pool<phantom T> has key {
@@ -28,6 +29,7 @@ public struct Pool<phantom T> has key {
     p_token_supply: Supply<PToken<T>>,
     deposited_amount: u64,
     current_draw_start_timestamp_s: u64,
+    reserve_balances: Balance<T>, // Storage of unclaimed prizes from past Prize Pool to use for the next draw
 }
 
 // Represent user's share in the pool
@@ -184,10 +186,14 @@ public fun new_draw_and_prize_pool<T>(
         self, 
         current_yb_token_ratio
     );
-    let prize_balances = reserve.redeem_yb_token_and_withdraw(
+    let mut prize_balances = reserve.redeem_yb_token_and_withdraw(
         coin::from_balance(self.yb_balances.split(yb_token_amount_to_redeem), ctx), 
         ctx
     ).into_balance();
+
+    // Add unclaimed prizes from past draw to the new prize pool
+    let reserve_balances_amount = self.reserve_balances.value();
+    prize_balances.join(self.reserve_balances.split(reserve_balances_amount));
 
     let total_prize_amount = balance::value(&prize_balances);
 
@@ -196,24 +202,41 @@ public fun new_draw_and_prize_pool<T>(
         &self.prize_pool_config
     );
 
-    // Update for next draw
-    self.current_draw_start_timestamp_s = current_timestamp_s;
-    self.draw_count = self.draw_count + 1;
-
-    // Need to burn p_Token to match with current balance of YB Token
+    let draw_id = self.draw_count + 1;
 
     let prize_pool_id = create_and_share_prize_pool(
         object::id(self),
-        self.draw_count,
+        draw_id,
         prize_count_per_tier,
         prize_per_winner_per_tier,
+        self.prize_pool_config.expire_timeframe_days(),
+        self.prize_pool_config.tier_frequency_weights(),
         self.twab_controller,
         generate_draw_random_number(r, ctx),
+        self.current_draw_start_timestamp_s,
+        current_timestamp_s,
         prize_balances,
         ctx
     );
+    
+    // Update for next draw
+    self.draw_count = draw_id;
+    self.current_draw_start_timestamp_s = current_timestamp_s;
 
     prize_pool_id
+}
+
+public fun get_unclaimed_from_prize_pool<T>(
+    self: &mut Pool<T>, 
+    prize_pool: &mut PrizePool<T>, 
+    clock: &Clock
+) {
+  assert!(
+    clock.timestamp_ms() / 1_000 > prize_pool.end_timestamp_s() + (prize_pool.expire_timeframe_days() as u64) * 86_400, 
+    EPrizePoolNotExpired
+    );
+
+    balance::join(&mut self.reserve_balances, prize_pool.prize_balances());
 }
 
 // === Admin Functions ===
@@ -236,6 +259,7 @@ public fun create_new_pool<T>(
         p_token_supply: balance::create_supply(PToken<T> {}),
         current_draw_start_timestamp_s: clock.timestamp_ms() / 1_000,
         draw_count: 0,
+        reserve_balances: balance::zero<T>(),
     };
 
     let id = object::id(&pool);
@@ -300,6 +324,7 @@ public fun create_test_pool<T>(
         p_token_supply: balance::create_supply(PToken<T> {}),
         current_draw_start_timestamp_s: clock.timestamp_ms() / 1_000,
         draw_count: 0,
+        reserve_balances: balance::zero<T>(),
     };
 
     let id = object::id(&pool);

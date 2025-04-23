@@ -1,14 +1,33 @@
-/// TODO: add explanation
 module prize_savings::twab_info;
 
 use sui::clock::Clock;
 
-public struct TwabInfo has store, copy {
+public struct TwabInfo has store, copy, drop {
     balance_accumulation_last: u64,
     current_draw_initial_balance_accumulation: u64,
     last_update_timestamp_s: u64,
     balance_last: u64
 }
+
+// === Public View Functions ===
+public fun balance_accumulation_last(self: &TwabInfo): u64 {
+    self.balance_accumulation_last
+}
+
+public fun current_draw_initial_balance_accumulation(self: &TwabInfo): u64 {
+    self.current_draw_initial_balance_accumulation
+}
+
+public fun last_update_timestamp_s(self: &TwabInfo): u64 {
+    self.last_update_timestamp_s
+}
+
+public fun balance_last(self: &TwabInfo): u64 {
+    self.balance_last
+}
+
+
+// === Package Mutative Functions ===
 
 public(package) fun create_twab_info(clock: &Clock): TwabInfo {
     let twab_info = TwabInfo {
@@ -45,4 +64,39 @@ public(package) fun update(
         self.balance_last - balance_change
     };
     self.balance_last = updated_balance;
+}
+
+// === Package View Functions
+public(package) fun get_twab(self: &TwabInfo, start_timestamp_s: u64, end_timestamp_s: u64): u64 {
+    let last_update_timestamp_s = self.last_update_timestamp_s();
+
+    assert!(end_timestamp_s > last_update_timestamp_s);
+    let time_elapse_s = end_timestamp_s - last_update_timestamp_s;
+
+    let current_balance_accumulation = 
+        self.balance_accumulation_last() + self.balance_last() * time_elapse_s;
+
+    let twab = (
+        current_balance_accumulation - self.current_draw_initial_balance_accumulation()) / 
+        (end_timestamp_s - start_timestamp_s);
+
+    twab
+}
+
+// === Test Functions ===
+#[test_only]
+public(package) fun create_test_twab_info(
+    balance_accumulation_last: u64, 
+    current_draw_initial_balance_accumulation: u64,
+    last_update_timestamp_s: u64, 
+    balance_last: u64,
+): TwabInfo {
+    let twab_info = TwabInfo {
+        balance_accumulation_last,
+        current_draw_initial_balance_accumulation,
+        last_update_timestamp_s,
+        balance_last
+    };
+
+    twab_info
 }
