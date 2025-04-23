@@ -43,7 +43,6 @@ public fun tier_frequency_weights(self: &PrizePoolConfig): vector<u8> {
 }
 
 // === Package Functions ===
-
 public(package) fun create_pool_prize_config(
     prize_frequency_days: u8,
     prize_count_per_tier: vector<u8>,
@@ -56,7 +55,7 @@ public(package) fun create_pool_prize_config(
         prize_count_per_tier,
         weight_per_tier,
         tier_frequency_weights,
-        expire_timeframe_days
+        expire_timeframe_days,
     };
 
     assert_config(&config);
@@ -65,7 +64,6 @@ public(package) fun create_pool_prize_config(
 }
 
 // === Private Functions ===
-
 fun assert_config(self: &PrizePoolConfig) {
     let prize_frequency_days = self.prize_frequency_days;
     let prize_count_per_tier = self.prize_count_per_tier;
@@ -76,10 +74,10 @@ fun assert_config(self: &PrizePoolConfig) {
     assert!(prize_frequency_days > 0, EInvalidFrequency);
     assert!(expire_timeframe_days > 0, EInvalidExpiryTimeframe);
     assert!(
-        prize_count_per_tier.length() > 0 && 
-        weight_per_tier.length() > 0 && 
-        tier_frequency_weights.length() > 0, 
-        EEmptyTiers
+        prize_count_per_tier.length() > 0 &&
+            weight_per_tier.length() > 0 &&
+            tier_frequency_weights.length() > 0,
+        EEmptyTiers,
     );
     assert!(prize_count_per_tier.length() == weight_per_tier.length(), EInvalidTierConfig);
     assert!(prize_count_per_tier.length() == tier_frequency_weights.length(), EInvalidTierConfig);
@@ -101,9 +99,9 @@ fun assert_prize_count_per_tier(prize_count_per_tier: vector<u8>) {
 }
 
 fun assert_weight_per_tier(weight_per_tier: vector<u8>) {
-    let mut sum :u8 = 0;
+    let mut sum: u8 = 0;
     let length = weight_per_tier.length();
-    
+
     let mut i = 0;
     while (i < length) {
         let tier_weight = *weight_per_tier.borrow(i);
@@ -155,8 +153,8 @@ public fun create_test_prize_pool_config(): PrizePoolConfig {
         expire_timeframe_days: 1,
         prize_count_per_tier,
         weight_per_tier,
-        tier_frequency_weights
-    }; 
+        tier_frequency_weights,
+    };
 
     prize_pool_config.assert_config();
 

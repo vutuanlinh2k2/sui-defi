@@ -6,7 +6,7 @@ public struct TwabInfo has store, copy, drop {
     balance_accumulation_last: u64,
     current_draw_initial_balance_accumulation: u64,
     last_update_timestamp_s: u64,
-    balance_last: u64
+    balance_last: u64,
 }
 
 // === Public View Functions ===
@@ -26,25 +26,22 @@ public fun balance_last(self: &TwabInfo): u64 {
     self.balance_last
 }
 
-
 // === Package Mutative Functions ===
-
 public(package) fun create_twab_info(clock: &Clock): TwabInfo {
-    let twab_info = TwabInfo {
+    TwabInfo {
         balance_accumulation_last: 0,
         last_update_timestamp_s: clock.timestamp_ms() / 1_000,
         current_draw_initial_balance_accumulation: 0,
-        balance_last: 0
-    };
-    twab_info
+        balance_last: 0,
+    }
 }
 
 public(package) fun update(
-    self: &mut TwabInfo, 
-    balance_change: u64, 
+    self: &mut TwabInfo,
+    balance_change: u64,
     is_deposit: bool,
     current_draw_start_timestamp_s: u64,
-    clock: &Clock
+    clock: &Clock,
 ) {
     if (self.last_update_timestamp_s < current_draw_start_timestamp_s) {
         self.current_draw_initial_balance_accumulation = self.balance_accumulation_last;
@@ -66,19 +63,19 @@ public(package) fun update(
     self.balance_last = updated_balance;
 }
 
-// === Package View Functions
+// === Package View Functions ===
 public(package) fun get_twab(self: &TwabInfo, start_timestamp_s: u64, end_timestamp_s: u64): u64 {
     let last_update_timestamp_s = self.last_update_timestamp_s();
 
     assert!(end_timestamp_s > last_update_timestamp_s);
     let time_elapse_s = end_timestamp_s - last_update_timestamp_s;
 
-    let current_balance_accumulation = 
+    let current_balance_accumulation =
         self.balance_accumulation_last() + self.balance_last() * time_elapse_s;
 
     let twab = (
-        current_balance_accumulation - self.current_draw_initial_balance_accumulation()) / 
-        (end_timestamp_s - start_timestamp_s);
+        current_balance_accumulation - self.current_draw_initial_balance_accumulation()
+    ) / (end_timestamp_s - start_timestamp_s);
 
     twab
 }
@@ -86,17 +83,15 @@ public(package) fun get_twab(self: &TwabInfo, start_timestamp_s: u64, end_timest
 // === Test Functions ===
 #[test_only]
 public(package) fun create_test_twab_info(
-    balance_accumulation_last: u64, 
+    balance_accumulation_last: u64,
     current_draw_initial_balance_accumulation: u64,
-    last_update_timestamp_s: u64, 
+    last_update_timestamp_s: u64,
     balance_last: u64,
 ): TwabInfo {
-    let twab_info = TwabInfo {
+    TwabInfo {
         balance_accumulation_last,
         current_draw_initial_balance_accumulation,
         last_update_timestamp_s,
-        balance_last
-    };
-
-    twab_info
+        balance_last,
+    }
 }

@@ -2,13 +2,13 @@
 module prize_savings::twab_controller;
 
 use prize_savings::twab_info::{TwabInfo, create_twab_info, create_test_twab_info};
-use sui::clock::{Clock};
+use sui::clock::Clock;
 use sui::vec_map::{Self, VecMap};
 
 // === Structs ===
 public struct TwabController has copy, store, drop {
     twab_total: TwabInfo,
-    twab_by_users: VecMap<address, TwabInfo>
+    twab_by_users: VecMap<address, TwabInfo>,
 }
 
 // === Public View Functions ===
@@ -27,51 +27,58 @@ public(package) fun create_twab_controller(clock: &Clock): TwabController {
 
     TwabController {
         twab_total,
-        twab_by_users
+        twab_by_users,
     }
 }
 
-// === Package Mutative Functions ===
 public(package) fun update(
     self: &mut TwabController,
     balance_change: u64,
     user_address: address,
     is_deposit: bool,
     current_draw_start_timestamp_s: u64,
-    clock: &Clock
+    clock: &Clock,
 ) {
     self.twab_total.update(
-        balance_change, 
+        balance_change,
         is_deposit,
         current_draw_start_timestamp_s,
-        clock
+        clock,
     );
 
     let twab_by_user = self.twab_by_users.get_mut(&user_address);
     twab_by_user.update(
-        balance_change, 
+        balance_change,
         is_deposit,
         current_draw_start_timestamp_s,
-        clock
+        clock,
     );
 }
 
-public(package) fun add_new_user_twab_info(self: &mut TwabController, user_address: address, clock: &Clock) {
+public(package) fun add_new_user_twab_info(
+    self: &mut TwabController,
+    user_address: address,
+    clock: &Clock,
+) {
     let twab_info = create_twab_info(clock);
     self.twab_by_users.insert(user_address, twab_info);
 }
 
 // === Package View Functions ===
-public(package) fun get_twab_total(self: &TwabController, start_timestamp_s: u64, end_timestamp_s: u64): u64 {
+public(package) fun get_twab_total(
+    self: &TwabController,
+    start_timestamp_s: u64,
+    end_timestamp_s: u64,
+): u64 {
     let twab_total_info = &self.twab_total;
     twab_total_info.get_twab(start_timestamp_s, end_timestamp_s)
 }
 
 public(package) fun get_twab_by_user(
-    self: &TwabController, 
-    user_address: address, 
-    start_timestamp_s: u64, 
-    end_timestamp_s: u64
+    self: &TwabController,
+    user_address: address,
+    start_timestamp_s: u64,
+    end_timestamp_s: u64,
 ): u64 {
     let twab_info = self.twab_by_users.get(&user_address);
     twab_info.get_twab(start_timestamp_s, end_timestamp_s)
@@ -97,6 +104,6 @@ public(package) fun create_test_ready_twab_controller(): TwabController {
 
     TwabController {
         twab_total,
-        twab_by_users
+        twab_by_users,
     }
 }

@@ -17,7 +17,6 @@ const EReserveNotExists: u64 = 3;
 const PROTOCOL_VERSION: u64 = 1;
 
 // === Structs ===
-
 public struct ProtocolRegistry has key {
     id: UID,
     inner: Versioned,
@@ -35,7 +34,7 @@ public struct ProtocolAdminCap has key, store {
 public struct Reserve<phantom T> has key {
     id: UID,
     token_balance: Balance<T>,
-    yb_token_supply: Supply<YBToken<T>>
+    yb_token_supply: Supply<YBToken<T>>,
 }
 
 /// Yield-Bearing Token
@@ -58,17 +57,16 @@ public fun yb_token_ratio<T>(reserve: &Reserve<T>): Decimal {
         let total_balance = balance::value(&reserve.token_balance);
         div(
             decimal::from(total_balance),
-            decimal::from(yb_token_supply_amount)
+            decimal::from(yb_token_supply_amount),
         )
     }
 }
 
 // === Public Mutative Functions ===
-
 public fun deposit_and_mint_yb_token<T>(
-    reserve: &mut Reserve<T>, 
-    liquidity: Coin<T>, 
-    ctx: &mut TxContext
+    reserve: &mut Reserve<T>,
+    liquidity: Coin<T>,
+    ctx: &mut TxContext,
 ): Coin<YBToken<T>> {
     assert!(coin::value(&liquidity) > 0);
 
@@ -76,23 +74,26 @@ public fun deposit_and_mint_yb_token<T>(
 
     let new_yb_token_amount = floor(div(
         decimal::from(coin::value(&liquidity)),
-        yb_token_ratio
+        yb_token_ratio,
     ));
 
     balance::join(&mut reserve.token_balance, coin::into_balance(liquidity));
-    coin::from_balance(balance::increase_supply(&mut reserve.yb_token_supply, new_yb_token_amount), ctx)
+    coin::from_balance(
+        balance::increase_supply(&mut reserve.yb_token_supply, new_yb_token_amount),
+        ctx,
+    )
 }
 
 public fun redeem_yb_token_and_withdraw<T>(
-    reserve: &mut Reserve<T>, 
-    yb_tokens: Coin<YBToken<T>>, 
-    ctx: &mut TxContext
+    reserve: &mut Reserve<T>,
+    yb_tokens: Coin<YBToken<T>>,
+    ctx: &mut TxContext,
 ): Coin<T> {
     assert!(coin::value(&yb_tokens) > 0);
     let yb_token_ratio = reserve.yb_token_ratio();
     let liquidity_amount = floor(mul(
         decimal::from(coin::value(&yb_tokens)),
-        yb_token_ratio
+        yb_token_ratio,
     ));
 
     balance::decrease_supply(&mut reserve.yb_token_supply, coin::into_balance(yb_tokens));
@@ -107,8 +108,7 @@ public fun increase_reserve_balance<T>(reserve: &mut Reserve<T>, tokens: Coin<T>
 }
 
 // === Admin Functions ===
-
-public fun create_protocol(ctx: &mut TxContext): (ID, ProtocolAdminCap)  {
+public fun create_protocol(ctx: &mut TxContext): (ID, ProtocolAdminCap) {
     let registry_inner = ProtocolRegistryInner {
         current_version: PROTOCOL_VERSION,
         reserves: table::new(ctx),
@@ -130,11 +130,15 @@ public fun create_protocol(ctx: &mut TxContext): (ID, ProtocolAdminCap)  {
     (id, admin_cap)
 }
 
-public fun create_reserve<T>(registry: &mut ProtocolRegistry, cap: &ProtocolAdminCap, ctx: &mut TxContext): ID {
+public fun create_reserve<T>(
+    registry: &mut ProtocolRegistry,
+    cap: &ProtocolAdminCap,
+    ctx: &mut TxContext,
+): ID {
     let reserve = Reserve<T> {
         id: object::new(ctx),
         token_balance: balance::zero<T>(),
-        yb_token_supply: balance::create_supply(YBToken<T> {})
+        yb_token_supply: balance::create_supply(YBToken<T> {}),
     };
 
     let reserve_id = object::id(&reserve);
@@ -154,7 +158,6 @@ public fun remove_reserve<T>(registry: &mut ProtocolRegistry) {
 }
 
 // === Private Functions ===
-
 fun register_reserve<T>(registry: &mut ProtocolRegistry, reserve_id: ID, _cap: &ProtocolAdminCap) {
     let registry = registry.load_inner_mut();
     let key = type_name::get<T>();
@@ -170,7 +173,6 @@ fun load_inner_mut(self: &mut ProtocolRegistry): &mut ProtocolRegistryInner {
 }
 
 // === Test Functions ===
-
 #[test_only]
 public fun test_protocol_registry(ctx: &mut TxContext): ID {
     let registry_inner = ProtocolRegistryInner {
@@ -203,7 +205,7 @@ public fun create_test_reserve<T>(ctx: &mut TxContext): ID {
     let reserve = Reserve<T> {
         id: object::new(ctx),
         token_balance: balance::zero<T>(),
-        yb_token_supply: balance::create_supply(YBToken<T> {})
+        yb_token_supply: balance::create_supply(YBToken<T> {}),
     };
 
     let id = object::id(&reserve);
